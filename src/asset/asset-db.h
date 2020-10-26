@@ -1,14 +1,14 @@
 #pragma once
 #include <fty/expected.h>
+#include <functional>
 #include <map>
 #include <set>
 #include <vector>
-#include <functional>
 
 namespace tntdb {
 class Connection;
 class Row;
-}
+} // namespace tntdb
 
 namespace fty::asset::db {
 
@@ -46,7 +46,7 @@ struct AssetLink
 };
 
 
-Expected<int64_t> nameToAssetId(const std::string& assetName);
+Expected<int64_t>                             nameToAssetId(const std::string& assetName);
 Expected<std::pair<std::string, std::string>> idToNameExtName(uint32_t assetId);
 
 Expected<std::map<std::string, int>> readElementTypes();
@@ -55,8 +55,8 @@ Expected<std::map<std::string, int>> readDeviceTypes();
 Expected<std::map<std::string, int>> getDictionary(const std::string& stStr);
 
 
-Expected<std::string>                         extNameToAssetName(const std::string& assetExtName);
-Expected<int64_t>                             extNameToAssetId(const std::string& assetExtName);
+Expected<std::string> extNameToAssetName(const std::string& assetExtName);
+Expected<int64_t>     extNameToAssetId(const std::string& assetExtName);
 
 Expected<AssetElement>    selectAssetElementByName(const std::string& elementName);
 Expected<WebAssetElement> selectAssetElementWebById(uint32_t elementId);
