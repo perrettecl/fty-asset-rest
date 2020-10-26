@@ -1,0 +1,9 @@
+<mapping>
+    <target>asset/read@lib${NAME}</target>
+    <url>^/api/v1/asset/?(datacenter|room|row|rack|group|device)?/?(.*)$</url>
+    <method>GET</method>
+    <args>
+        <id>$2</id>
+        <type>$1</type>
+    </args>
+</mapping>
