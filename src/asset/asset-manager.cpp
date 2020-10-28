@@ -58,30 +58,24 @@ ErrCode createErr(const db_reply<T>& other)
     return ret;
 }
 
-Expected<db_web_element_t, ErrCode> AssetManager::getItem(uint32_t id)
+Expected<db::WebAssetElementExt> AssetManager::getItem(uint32_t id)
 {
-    db_web_element_t ret;
+    db::WebAssetElementExt el;
     try {
         tntdb::Connection conn = tntdb::connect(DBConn::url);
         log_debug("connection was successful");
 
-        auto basic_ret = DBAssets::select_asset_element_web_byId(conn, id);
+        if (auto ret = db::selectAssetElementWebById(id, el); !ret) {
+            return unexpected(ret.error());
+        }
         log_debug("1/5 basic select is done");
 
-        if (basic_ret.status == 0) {
-            return unexpected(createErr(basic_ret));
+        if (auto ret = db::selectExtAttributes(id)) {
+            el.ext = *ret;
+        } else {
+            return unexpected(ret.error());
         }
-        log_debug("    1/5 no errors");
-        ret.basic = basic_ret.item;
-
-        auto ext_ret = DBAssets::select_ext_attributes(conn, id);
         log_debug("2/5 ext select is done");
-
-        if (ext_ret.status == 0) {
-            return unexpected(createErr(ext_ret));
-        }
-        log_debug("    2/5 no errors");
-        ret.ext = ext_ret.item;
 
         auto group_ret = DBAssets::select_asset_element_groups(conn, id);
         log_debug("3/5 groups select is done, but next one is only for devices");
@@ -152,7 +146,7 @@ Expected<AssetManager::AssetList, ErrCode> AssetManager::getItems(
     }
 }
 
-Expected<void, ErrCode> AssetManager::deleteItem(uint32_t /*id*/, db_a_elmnt_t& /*element_info*/)
+Expected<db::AssetElement, ErrCode> AssetManager::deleteItem(uint32_t id)
 {
     return unexpected(ErrCode{DB_ERR, DB_ERROR_INTERNAL, "not-implemented"_tr});
 }

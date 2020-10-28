@@ -23,6 +23,7 @@
 #include "asset/asset-helpers.h"
 #include "asset/json.h"
 #include <fty_common_asset_types.h>
+#include <fty/rest/component.h>
 
 namespace fty::asset {
 
@@ -63,3 +64,5 @@ unsigned Read::run()
 }
 
 } // namespace fty::asset
+
+registerHandler(fty::asset::Read)

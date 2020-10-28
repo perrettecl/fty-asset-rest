@@ -7,3 +7,77 @@
         <type>$1</type>
     </args>
 </mapping>
+
+<mapping>
+  <target>asset/create@lib${NAME}</target>
+  <url>^/api/v1/asset/?$</url>
+  <method>POST</method>
+</mapping>
+
+
+<mapping>
+  <target>asset_list@libfty_rest</target>
+  <url>^/api/v1/asset/(datacenter|room|row|rack|group|device)s.*$</url>
+  <args>
+    <type>$1</type>
+  </args>
+</mapping>
+
+<!-- to move -->
+
+<mapping>
+  <target>asset_import@libfty_rest</target>
+  <url>^/api/v1/asset/import.*</url>
+</mapping>
+
+<mapping>
+  <target>asset_export@libfty_rest</target>
+  <method>GET</method>
+  <url>^/api/v1/asset/export/(.*)</url>
+  <args>
+    <dc>$1</dc>
+  </args>
+</mapping>
+
+<mapping>
+  <target>asset_export@libfty_rest</target>
+  <method>GET</method>
+  <url>^/api/v1/asset/export</url>
+</mapping>
+
+<mapping>
+  <target>asset_actions_GET@libfty_rest</target>
+  <url>^/api/v1/asset/(.*)/actions$</url>
+  <method>GET</method>
+  <args>
+    <id>$1</id>
+  </args>
+</mapping>
+
+<mapping>
+  <target>asset_actions_POST@libfty_rest</target>
+  <url>^/api/v1/asset/(.*)/actions$</url>
+  <method>POST</method>
+  <args>
+    <id>$1</id>
+  </args>
+</mapping>
+
+<mapping>
+  <target>asset_DELETE@libfty_rest</target>
+  <url>^/api/v1/asset/(.*)$</url>
+  <method>DELETE</method>
+  <args>
+    <id>$1</id>
+  </args>
+</mapping>
+
+<mapping>
+  <target>asset_PUT@libfty_rest</target>
+  <url>^/api/v1/asset/(.*)$</url>
+  <method>PUT</method>
+  <args>
+    <id>$1</id>
+  </args>
+</mapping>
+

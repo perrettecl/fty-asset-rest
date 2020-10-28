@@ -75,11 +75,7 @@ std::string getJsonAsset(uint32_t elemId)
     AssetManager asset_mgr;
     auto         tmp = asset_mgr.getItem(elemId);
     if (!tmp) {
-        if (tmp.error().subType == DB_ERROR_NOTFOUND) {
-            log_error("element-not-found : %" PRId64 "", elemId);
-        } else {
-            log_error("get_item1 Internal database error");
-        }
+        log_error(tmp.error().c_str());
         return json;
     }
 

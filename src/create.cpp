@@ -22,6 +22,7 @@
 #include "create.h"
 #include "asset/csv.h"
 #include <fty/rest/audit-log.h>
+#include <fty/rest/component.h>
 
 #include <fty_common_asset.h>
 #include <fty_asset_activator.h>
@@ -181,3 +182,5 @@ unsigned Create::run()
 }
 
 } // namespace fty::asset
+
+registerHandler(fty::asset::Create)

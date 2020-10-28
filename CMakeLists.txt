@@ -31,6 +31,8 @@ etn_target(static asset
         src/asset/csv.cpp
         src/asset/csv.h
         src/asset/error.h
+        src/asset/logger.h
+        src/asset/db.h
     USES
         fty_common_logging
         mlm
@@ -48,6 +50,10 @@ etn_target(shared ${PROJECT_NAME}
         src/read.h
         src/create.cpp
         src/create.h
+        src/list.cpp
+        src/list.h
+        src/delete.cpp
+        src/delete.h
 
     USES
         fty-cmake-rest
