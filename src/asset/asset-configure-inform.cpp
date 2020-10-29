@@ -169,7 +169,7 @@ Expected<void> sendConfigure(
             streq(operation2str(oneRow.second).c_str(), FTY_PROTO_ASSET_OP_UPDATE)) {
             zmsg_t* republish = zmsg_new();
             zmsg_addstr(republish, s_asset_name.c_str());
-            mlm_client_sendto(client, "asset-agent", "REPUBLISH", NULL, 5000, &republish);
+            mlm_client_sendto(client, "asset-agent", "REPUBLISH", nullptr, 5000, &republish);
         }
 
         // data for uptime
@@ -180,7 +180,7 @@ Expected<void> sendConfigure(
                 log_error("Cannot read upses for dc with id = %s", dc_name.c_str());
 
             zhash_update(aux1, "type", reinterpret_cast<void*>(const_cast<char*>("datacenter")));
-            zmsg_t*     msg1     = fty_proto_encode_asset(aux1, dc_name.c_str(), "inventory", NULL);
+            zmsg_t*     msg1     = fty_proto_encode_asset(aux1, dc_name.c_str(), "inventory", nullptr);
             std::string subject1 = "datacenter.unknown@";
             subject.append(dc_name);
             r = mlm_client_send(client, subject.c_str(), &msg1);

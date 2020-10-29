@@ -10,6 +10,11 @@ class Connection;
 class Row;
 } // namespace tntdb
 
+namespace tnt {
+class Connection;
+class Row;
+} // namespace tnt
+
 namespace fty::asset::db {
 
 struct AssetElement
@@ -64,7 +69,7 @@ struct WebAssetElementExt : public WebAssetElement
 {
     std::map<uint32_t, std::string>                                          groups;
     std::vector<DbAssetLink>                                                 powers;
-    Attributes                                                               ext;
+    Attributes                                                               extAttributes;
     std::vector<std::tuple<uint32_t, std::string, std::string, std::string>> parents; // list of parents (id, name)
 };
 
@@ -91,19 +96,40 @@ Expected<int64_t> extNameToAssetId(const std::string& assetExtName);
 /// select basic information about asset element by name
 /// @param name asset internal or external name
 /// return @ref AssetElement or error
-Expected<AssetElement>    selectAssetElementByName(const std::string& name);
+Expected<AssetElement> selectAssetElementByName(const std::string& name);
 
 Expected<WebAssetElement> selectAssetElementWebById(uint32_t elementId);
 Expected<void>            selectAssetElementWebById(uint32_t elementId, WebAssetElement& asset);
 Expected<Attributes>      selectExtAttributes(uint32_t elementId);
 
-Expected<uint>    updateAssetElement(tntdb::Connection& conn, uint32_t elementId, const std::string& elementName,
-       uint32_t parentId, const std::string& status, uint16_t priority, const std::string& assetTag);
+/// get information about the groups element belongs to
+/// @param elementId element id
+/// returns groups map or error
+Expected<std::map<uint32_t, std::string>> selectAssetElementGroups(uint32_t elementId);
+
+
+/// Updates asset element
+/// @param conn database established connection
+/// @param elementId
+/// @param parentId
+/// @param status
+/// @param priority
+/// @param assetTag
+/// @returns affected rows count or error
+Expected<uint> updateAssetElement(tnt::Connection& conn, uint32_t elementId, uint32_t parentId,
+    const std::string& status, uint16_t priority, const std::string& assetTag);
+
+/// Deletes all ext attributes of given asset with given 'read_only' status
+/// @param conn database established connection
+/// @param elementId
+/// @param readOnly
+/// @returns deleted rows or error
+Expected<uint> deleteAssetExtAttributesWithRo(tnt::Connection& conn, uint32_t elementId, bool readOnly);
+
 Expected<int64_t> insertIntoAssetElement(tntdb::Connection& conn, const std::string& elementName,
     uint16_t elementTypeId, uint32_t parentId, const std::string& status, uint16_t priority, uint16_t subtypeId,
     const std::string& assetTag, bool update);
 
-Expected<uint> deleteAssetExtAttributesWithRo(tntdb::Connection& conn, uint32_t assetElementId, bool readOnly);
 Expected<uint> insertIntoAssetExtAttributes(
     tntdb::Connection& conn, uint32_t elementId, const std::map<std::string, std::string>& attributes, bool readOnly);
 Expected<uint> deleteAssetElementFromAssetGroups(tntdb::Connection& conn, uint32_t assetElementId);

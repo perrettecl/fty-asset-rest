@@ -1,15 +1,14 @@
 #include "asset-import.h"
-#include "asset-db.h"
 #include "asset-helpers.h"
 #include "asset-licensing.h"
 #include "csv.h"
 #include "json.h"
 #include <fty/split.h>
 #include <fty_asset_activator.h>
-#include <fty_common_db.h>
+#include <fty_common_db_dbpath.h>
 #include <fty_log.h>
 #include <regex>
-#include <tntdb.h>
+#include "db.h"
 
 #define AGENT_ASSET_ACTIVATOR "etn-licensing-credits"
 
@@ -784,7 +783,7 @@ AssetExpected<void> Import::updateDcRoomRowRackGroup(tntdb::Connection& conn, ui
 
 
     {
-        auto ret = db::updateAssetElement(conn, elementId, elementName, parentId, status, priority, assetTag);
+        auto ret = db::updateAssetElement(conn, elementId, parentId, status, priority, assetTag);
 
         if (!ret || *ret != 1) {
             auto errmsg = "check  element name, location, status, priority, asset_tag"_tr;

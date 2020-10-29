@@ -39,6 +39,8 @@ etn_target(static asset
         fty_asset_activator
         fty_common
         fty-utils
+        fty_shm
+        fty_common_rest
     PRIVATE
 )
 

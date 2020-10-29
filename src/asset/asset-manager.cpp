@@ -71,7 +71,7 @@ Expected<db::WebAssetElementExt> AssetManager::getItem(uint32_t id)
         log_debug("1/5 basic select is done");
 
         if (auto ret = db::selectExtAttributes(id)) {
-            el.ext = *ret;
+            el.extAttributes = *ret;
         } else {
             return unexpected(ret.error());
         }
@@ -84,7 +84,7 @@ Expected<db::WebAssetElementExt> AssetManager::getItem(uint32_t id)
             return unexpected(createErr(group_ret));
         }
         log_debug("    3/5 no errors");
-        ret.groups = group_ret.item;
+        /*ret.groups = group_ret.item;
 
         if (ret.basic.type_id == persist::asset_type::DEVICE) {
             auto powers = DBAssets::select_asset_device_links_to(conn, id, INPUT_POWER_CHAIN);
@@ -102,7 +102,8 @@ Expected<db::WebAssetElementExt> AssetManager::getItem(uint32_t id)
         ret.parents = s_get_parents(conn, id);
         log_debug("     5/5 no errors");
 
-        return std::move(ret);
+        return std::move(ret);*/
+        return el;
     } catch (const std::exception& e) {
         return unexpected(ErrCode{DB_ERR, DB_ERROR_INTERNAL, error(Errors::InternalError).format(e.what())});
     }

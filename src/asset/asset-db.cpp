@@ -9,6 +9,8 @@
 
 namespace fty::asset::db {
 
+// =====================================================================================================================
+
 Expected<int64_t> nameToAssetId(const std::string& assetName)
 {
     static const std::string sql = R"(
@@ -16,13 +18,13 @@ Expected<int64_t> nameToAssetId(const std::string& assetName)
             id_asset_element
         FROM
             t_bios_asset_element
-        WHERE name = :asset_name
+        WHERE name = :assetName
     )";
 
     try {
         tnt::Connection db;
 
-        auto res = db.selectRow(sql, "asset_name"_a = assetName);
+        auto res = db.selectRow(sql, "assetName"_p = assetName);
 
         return res.get<int64_t>("id_asset_element");
     } catch (const tntdb::NotFound&) {
@@ -31,6 +33,8 @@ Expected<int64_t> nameToAssetId(const std::string& assetName)
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), assetName));
     }
 }
+
+// =====================================================================================================================
 
 Expected<std::pair<std::string, std::string>> idToNameExtName(uint32_t assetId)
 {
@@ -43,12 +47,14 @@ Expected<std::pair<std::string, std::string>> idToNameExtName(uint32_t assetId)
         ON
             ext.id_asset_element = asset.id_asset_element
         WHERE
-            ext.keytag = "name" AND asset.id_asset_element = :asset_id
+            ext.keytag = "name" AND asset.id_asset_element = :assetId
     )";
 
     try {
         tnt::Connection db;
-        auto            res = db.selectRow(sql, "asset_id"_a = assetId);
+
+        auto res = db.selectRow(sql, "assetId"_p = assetId);
+
         return std::make_pair(res.get<std::string>("name"), res.get<std::string>("value"));
     } catch (const tntdb::NotFound&) {
         return unexpected(error(Errors::ElementNotFound).format(assetId));
@@ -57,55 +63,56 @@ Expected<std::pair<std::string, std::string>> idToNameExtName(uint32_t assetId)
     }
 }
 
+// =====================================================================================================================
+
 Expected<std::string> extNameToAssetName(const std::string& assetExtName)
 {
+    static const std::string sql = R"(
+        SELECT a.name
+        FROM t_bios_asset_element AS a
+        INNER JOIN
+            t_bios_asset_ext_attributes AS e
+        ON
+            a.id_asset_element = e.id_asset_element
+        WHERE
+            keytag = "name" and value = :extName
+    )";
+
     try {
-        tntdb::Connection conn = tntdb::connectCached(DBConn::url);
+        tnt::Connection db;
 
-        tntdb::Statement st = conn.prepareCached(R"(
-            SELECT a.name
-            FROM t_bios_asset_element AS a
-            INNER JOIN
-                t_bios_asset_ext_attributes AS e
-            ON
-                a.id_asset_element = e.id_asset_element
-            WHERE
-                keytag = "name" and value = :extname
-        )");
+        auto res = db.selectRow(sql, "extName"_p = assetExtName);
 
-        tntdb::Row row = st.set("extname", assetExtName).selectRow();
-        logDebug("[extNameToAssetName]: were selected {} rows", 1);
-
-        return row.getString("name");
+        return res.get("name");
     } catch (const tntdb::NotFound&) {
         return unexpected(error(Errors::ElementNotFound).format(assetExtName));
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), assetExtName));
     }
 }
+
+// =====================================================================================================================
 
 Expected<int64_t> extNameToAssetId(const std::string& assetExtName)
 {
+    static const std::string sql = R"(
+        SELECT
+            a.id_asset_element
+        FROM
+            t_bios_asset_element AS a
+        INNER JOIN
+            t_bios_asset_ext_attributes AS e
+        ON
+            a.id_asset_element = e.id_asset_element
+        WHERE
+            keytag = 'name' and value = :extName
+    )";
     try {
-        tntdb::Connection conn = tntdb::connectCached(DBConn::url);
+        tnt::Connection db;
 
-        tntdb::Statement st = conn.prepareCached(R"(
-            SELECT
-                a.id_asset_element
-            FROM
-                t_bios_asset_element AS a
-            INNER JOIN
-                t_bios_asset_ext_attributes AS e
-            ON
-                a.id_asset_element = e.id_asset_element
-            WHERE
-                keytag = 'name' and value = :extname
-        )");
+        auto res = db.selectRow(sql, "extName"_p = assetExtName);
 
-        tntdb::Row row = st.set("extname", assetExtName).selectRow();
-        logDebug("[extNameToAssetId]: were selected {} rows", 1);
-
-        return row.getInt64("id_asset_element");
+        return res.get<int64_t>("id_asset_element");
     } catch (const tntdb::NotFound&) {
         return unexpected(error(Errors::ElementNotFound).format(assetExtName));
     } catch (const std::exception& e) {
@@ -113,51 +120,51 @@ Expected<int64_t> extNameToAssetId(const std::string& assetExtName)
     }
 }
 
+// =====================================================================================================================
+
 Expected<AssetElement> selectAssetElementByName(const std::string& elementName)
 {
+    static const std::string nameSql = R"(
+        SELECT
+            v.name, v.id_parent, v.status, v.priority, v.id, v.id_type
+        FROM
+            v_bios_asset_element v
+        WHERE v.name = :name
+    )";
+
+    static const std::string extNameSql = R"(
+        SELECT v.name, v.id_parent, v.status, v.priority, v.id, v.id_type
+        FROM
+            v_bios_asset_element AS v
+        LEFT JOIN
+            v_bios_asset_ext_attributes AS ext
+        ON
+            ext.id_asset_element = v.id
+        WHERE
+            ext.keytag = 'name' AND ext.value = :name
+    )";
+
     if (!persist::is_ok_name(elementName.c_str())) {
         return unexpected("name is not valid"_tr);
     }
 
     try {
-        tntdb::Connection conn = tntdb::connectCached(DBConn::url);
+        tnt::Connection      db;
+        tnt::Connection::Row row;
 
-        tntdb::Row row;
         try {
-            tntdb::Statement st = conn.prepare(R"(
-                SELECT
-                    v.name, v.id_parent, v.status, v.priority, v.id, v.id_type
-                FROM
-                    v_bios_asset_element v
-                WHERE v.name = :name
-            )");
-
-            row = st.set("name", elementName).selectRow();
+            row = db.selectRow(nameSql, "name"_p = elementName);
         } catch (const tntdb::NotFound&) {
-            // maybe we got extname instead of name
-            tntdb::Statement st = conn.prepare(R"(
-                SELECT v.name, v.id_parent, v.status, v.priority, v.id, v.id_type
-                FROM
-                    v_bios_asset_element AS v
-                LEFT JOIN
-                    v_bios_asset_ext_attributes AS ext
-                ON
-                    ext.id_asset_element = v.id
-                WHERE
-                    ext.keytag = 'name' AND ext.value = :name
-            )");
-
-            row = st.set("name", elementName).selectRow();
+            row = db.selectRow(extNameSql, "name"_p = elementName);
         }
 
-
         AssetElement el;
-        el.name     = row.getString("name");
-        el.parentId = row.getUnsigned32("id_parent");
-        el.status   = row.getString("status");
-        el.priority = uint16_t(row.getUnsigned32("priority"));
-        el.id       = row.getUnsigned32("id");
-        el.typeId   = uint16_t(row.getUnsigned32("id_type"));
+        row.get("name", el.name);
+        row.get("id_parent", el.parentId);
+        row.get("status", el.status);
+        row.get("priority", el.priority);
+        row.get("id", el.id);
+        row.get("id_type", el.typeId);
 
         return std::move(el);
     } catch (const tntdb::NotFound&) {
@@ -167,50 +174,58 @@ Expected<AssetElement> selectAssetElementByName(const std::string& elementName)
     }
 }
 
+// =====================================================================================================================
+
 Expected<WebAssetElement> selectAssetElementWebById(uint32_t elementId)
 {
     WebAssetElement el;
 
     if (auto ret = selectAssetElementWebById(elementId, el)) {
-        return el;
+        return std::move(el);
     } else {
         return unexpected(ret.error());
     }
 }
 
+// =====================================================================================================================
+
 Expected<void> selectAssetElementWebById(uint32_t elementId, WebAssetElement& asset)
 {
-    log_debug("element_id = %" PRIi32, elementId);
-
+    static const std::string sql = R"(
+        SELECT
+            v.id,
+            v.name,
+            v.id_type,
+            v.type_name,
+            v.subtype_id,
+            v.subtype_name,
+            v.id_parent,
+            v.id_parent_type,
+            v.status,
+            v.priority,
+            v.asset_tag,
+            v.parent_name
+        FROM
+            v_web_element v
+        WHERE
+            :id = v.id)";
     try {
-        tntdb::Connection conn = tntdb::connectCached(DBConn::url);
+        tnt::Connection db;
 
-        // Can return more than one row.
-        tntdb::Statement st = conn.prepareCached(
-            " SELECT"
-            "   v.id, v.name, v.id_type, v.type_name,"
-            "   v.subtype_id, v.subtype_name, v.id_parent,"
-            "   v.id_parent_type, v.status,"
-            "   v.priority, v.asset_tag, v.parent_name "
-            " FROM"
-            "   v_web_element v"
-            " WHERE :id = v.id");
+        auto row = db.selectRow(sql, "id"_p = elementId);
 
-        tntdb::Row row = st.set("id", elementId).selectRow();
-        log_debug("[v_web_element]: were selected %" PRIu32 " rows", 1);
-
-        row[0].get(asset.id);
-        row[1].get(asset.name);
-        row[2].get(asset.typeId);
-        row[3].get(asset.typeName);
-        row[4].get(asset.subtypeId);
-        row[5].get(asset.subtypeName);
-        row[6].get(asset.parentId);
-        row[7].get(asset.parentTypeId);
-        row[8].get(asset.status);
-        row[9].get(asset.priority);
-        row[10].get(asset.assetTag);
-        row[11].get(asset.parentName);
+        row.get("id", asset.id);
+        row.get("name", asset.name);
+        row.get("id_type", asset.typeId);
+        row.get("type_name", asset.typeName);
+        row.get("subtype_id", asset.subtypeId);
+        row.get("subtype_name", asset.subtypeName);
+        row.get("id_parent", asset.parentId);
+        row.get("id_parent_type", asset.parentTypeId);
+        row.get("status", asset.status);
+        row.get("priority", asset.priority);
+        row.get("asset_tag", asset.assetTag);
+        row.get("parent_name", asset.parentName);
 
         return {};
     } catch (const tntdb::NotFound&) {
@@ -220,158 +235,166 @@ Expected<void> selectAssetElementWebById(uint32_t elementId, WebAssetElement& as
     }
 }
 
-Expected<Attributes> selectExtAttributes(uint32_t element_id)
+// =====================================================================================================================
+
+Expected<Attributes> selectExtAttributes(uint32_t elementId)
 {
-    Attributes attrs;
+    static const std::string sql = R"(
+        SELECT
+            v.keytag,
+            v.value,
+            v.read_only
+        FROM
+            v_bios_asset_ext_attributes v
+        WHERE
+            v.id_asset_element = :elementId
+    )";
 
     try {
-        tntdb::Connection conn = tntdb::connectCached(DBConn::url);
+        tnt::Connection db;
 
-        // Can return more than one row
-        tntdb::Statement st_extattr = conn.prepareCached(
-            " SELECT"
-            "   v.keytag, v.value, v.read_only"
-            " FROM"
-            "   v_bios_asset_ext_attributes v"
-            " WHERE v.id_asset_element = :idelement");
+        auto result = db.select(sql, "elementId"_p = elementId);
 
-        tntdb::Result result = st_extattr.set("idelement", element_id).select();
+        Attributes attrs;
 
-        log_debug("[v_bios_asset_ext_attributes]: were selected %" PRIu32 " rows", result.size());
-
-        // Go through the selected extra attributes
-        for (auto& row : result) {
-            std::string keytag;
-            row[0].get(keytag);
-
+        for (const auto& row : result) {
             ExtAttrValue val;
-            row[1].get(val.value);
-            row[2].get(val.readOnly);
 
-            attrs.emplace(keytag, val);
+            row.get("value", val.value);
+            row.get("read_only", val.readOnly);
+
+            attrs.emplace(row.get("keytag"), val);
         }
-        return attrs;
+
+        return std::move(attrs);
     } catch (const std::exception& e) {
-        return unexpected(e.what());
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
 }
 
-/*db_reply<std::map<uint32_t, std::string>> select_asset_element_groups(tntdb::Connection& conn, uint32_t element_id)
-{
-    LOG_START;
-    log_debug("element_id = %" PRIi32, element_id);
+// =====================================================================================================================
 
-    std::map<uint32_t, std::string>           item{};
-    db_reply<std::map<uint32_t, std::string>> ret = db_reply_new(item);
+Expected<std::map<uint32_t, std::string>> selectAssetElementGroups(uint32_t elementId)
+{
+    static std::string sql = R"(
+        SELECT
+            v1.id_asset_group, v.name
+        FROM
+            v_bios_asset_group_relation v1,
+            v_bios_asset_element v
+        WHERE
+            v1.id_asset_element = :idelement AND
+            v.id = v1.id_asset_group
+    )";
+
 
     try {
-        // Get information about the groups element belongs to
-        // Can return more than one row
-        tntdb::Statement st_gr = conn.prepareCached(
-            " SELECT "
-            "   v1.id_asset_group, v.name "
-            " FROM "
-            "   v_bios_asset_group_relation v1, "
-            "   v_bios_asset_element v "
-            " WHERE "
-            "   v1.id_asset_element = :idelement AND "
-            "   v.id = v1.id_asset_group ");
+        tnt::Connection db;
 
-        tntdb::Result result = st_gr.set("idelement", element_id).select();
+        auto res = db.select(sql, "idelement"_p = elementId);
 
-        log_debug("[v_bios_asset_group_relation]: were selected %" PRIu32 " rows", result.size());
-        // Go through the selected groups
-        for (auto& row : result) {
-            // group_id, required
-            uint32_t group_id = 0;
-            row["id_asset_group"].get(group_id);
+        std::map<uint32_t, std::string> item;
 
-            std::string group_name;
-            row["name"].get(group_name);
-            ret.item.emplace(group_id, group_name);
+        for (const auto& row : res) {
+            item.emplace(row.get<uint32_t>("id_asset_group"), row.get("name"));
         }
-        ret.status = 1;
-        LOG_END;
-        return ret;
+        return item;
     } catch (const std::exception& e) {
-        ret.status     = 0;
-        ret.errtype    = DB_ERR;
-        ret.errsubtype = DB_ERROR_INTERNAL;
-        ret.msg        = e.what();
-        ret.item.clear();
-        LOG_END_ABNORMAL(e);
-        return ret;
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
-}*/
+}
 
-Expected<uint> updateAssetElement(tntdb::Connection& conn, uint32_t elementId, const std::string& elementName,
-    uint32_t parentId, const std::string& status, uint16_t priority, const std::string& assetTag)
+// =====================================================================================================================
+
+Expected<uint> updateAssetElement(tnt::Connection& db, uint32_t elementId, uint32_t parentId, const std::string& status,
+    uint16_t priority, const std::string& assetTag)
 {
-    LOG_START;
-    log_debug("  element_id = %" PRIi32, elementId);
-    log_debug("  element_name = '%s'", elementName.c_str());
-    log_debug("  parent_id = %" PRIu32, parentId);
-    log_debug("  status = '%s'", status.c_str());
-    log_debug("  priority = %" PRIu16, priority);
-    log_debug("  asset_tag = '%s'", assetTag.c_str());
+    static const std::string sql = R"(
+        UPDATE
+            t_bios_asset_element
+        SET
+            asset_tag = :assetTag,
+            id_parent = :parentId,
+            status    = :status,
+            priority  = :priority
+        WHERE
+            id_asset_element = :id
+    )";
 
-    // if parent id == 0 ->  it means that there is no parent and value
-    // should be updated to NULL
     try {
-        tntdb::Statement st = conn.prepareCached(
-            " UPDATE"
-            "   t_bios_asset_element"
-            " SET"
-            "   asset_tag = :asset_tag,"
-            "   id_parent = :id_parent,"
-            "   status = :status,"
-            "   priority = :priority"
-            " WHERE id_asset_element = :id");
+        auto st = db.prepare(sql);
 
-        st = st.set("id", elementId).set("status", status).set("priority", priority).set("asset_tag", assetTag);
+        // clang-format off
+        st.bind(
+            "id"_p        = elementId,
+            "status"_p    = status,
+            "priority"_p  = priority,
+            "assetTag"_p  = assetTag
+        );
+        // clang-format on
 
-        uint affectedRows;
         if (parentId != 0) {
-            affectedRows = st.set("id_parent", parentId).execute();
+            st.bind("parentId"_p = parentId);
         } else {
-            affectedRows = st.setNull("id_parent").execute();
+            st.bind("parentId"_p = tnt::Empty());
         }
-        log_debug("[t_asset_element]: updated %" PRIu32 " rows", affectedRows);
-        return affectedRows;
+
+        return st.execute();
     } catch (const std::exception& e) {
-        return unexpected(e.what());
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
 }
 
-Expected<uint> deleteAssetExtAttributesWithRo(tntdb::Connection& conn, uint32_t assetElementId, bool readOnly)
+// =====================================================================================================================
+
+Expected<uint> deleteAssetExtAttributesWithRo(tnt::Connection& conn, uint32_t elementId, bool readOnly)
 {
-    LOG_START;
-    log_debug("read_only = %i, asset_element_id = %" PRIu32, readOnly, assetElementId);
+    static const std::string sql = R"(
+        DELETE FROM
+            t_bios_asset_ext_attributes
+        WHERE
+            id_asset_element = :element AND
+            read_only = :ro
+    )";
 
     try {
-        tntdb::Statement st = conn.prepareCached(
-            " DELETE FROM"
-            "   t_bios_asset_ext_attributes"
-            " WHERE"
-            "   id_asset_element = :element AND "
-            "   read_only = :ro ");
-
-        uint affectedRows = st.set("element", assetElementId).set("ro", readOnly).execute();
-        log_debug("[t_bios_asset_ext_attributes]: was deleted %" PRIu64 " rows", affectedRows);
-        return affectedRows;
+        // clang-format off
+        return conn.execute(sql,
+            "element"_p = elementId,
+            "ro"_p      = readOnly
+        );
+        // clang-format on
     } catch (const std::exception& e) {
-        return unexpected(e.what());
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
 }
+
+// =====================================================================================================================
 
 Expected<uint> insertIntoAssetExtAttributes(
-    tntdb::Connection& conn, uint32_t elementId, const std::map<std::string, std::string>& attributes, bool readOnly)
+    tnt::Connection& conn, uint32_t elementId, const std::map<std::string, std::string>& attributes, bool readOnly)
 {
+    const std::string sql = fmt::format(R"(
+        INSERT INTO
+            t_bios_asset_ext_attributes (keytag, value, id_asset_element, read_only)
+        VALUES
+            {}
+        ON DUPLICATE KEY UPDATE
+            id_asset_ext_attribute = LAST_INSERT_ID(id_asset_ext_attribute)
+    )", tnt::multiInsert());
+
     if (attributes.empty()) {
         return unexpected("no attributes to insert"_tr);
     }
 
     try {
+        std::vector<std::vector<std::string>> values;
+        for (const auto& [key, value] : attributes) {
+            values.push_back(std::make_tuple(key, value, elementId, readOnly));
+        }
+
+        conn.execute(sql, "values"_p = values);
+
         std::stringstream ss;
         ss << "INSERT INTO ";
         ss << "t_bios_asset_ext_attributes (keytag, value, id_asset_element, read_only) ";

@@ -56,7 +56,7 @@ AssetExpected<double> sanitizeValueDouble(const std::string& key, const std::str
             return unexpected(error(Errors::BadParams).format(key, value, "value should be a number"_tr));
         }
         return d_value;
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return unexpected(error(Errors::BadParams).format(key, value, "value should be a number"_tr));
     }
 }
