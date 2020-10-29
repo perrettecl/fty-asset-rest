@@ -1,6 +1,8 @@
 #pragma once
 
 #include <fty/traits.h>
+#include <fty/split.h>
+#include <fmt/format.h>
 #include <fty_common_db_dbpath.h>
 #include <tntdb.h>
 
@@ -154,6 +156,20 @@ public:
 private:
     tntdb::Connection m_connection;
 };
+
+std::string multiInsert(std::initializer_list<std::string> cols, size_t count)
+{
+    std::vector<std::string> colsStr;
+    for(const auto& col: cols) {
+        colsStr.push_back(":"+col+"_{0}");
+    }
+
+    std::string out;
+    for (size_t i = 0; i < count; ++i) {
+        out += (i > 0 ? ", " : "") + fmt::format("("+fty::implode(colsStr, ", ")+")", i);
+    }
+    return out;
+}
 
 } // namespace tnt
 

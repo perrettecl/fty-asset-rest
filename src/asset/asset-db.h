@@ -126,13 +126,20 @@ Expected<uint> updateAssetElement(tnt::Connection& conn, uint32_t elementId, uin
 /// @returns deleted rows or error
 Expected<uint> deleteAssetExtAttributesWithRo(tnt::Connection& conn, uint32_t elementId, bool readOnly);
 
+/// Insert given ext attributes map into t_bios_asset_ext_attributes
+/// @param conn database established connection
+/// @param attributes attributes map - {key, value}
+/// @param readOnly 'read_only' status
+Expected<uint> insertIntoAssetExtAttributes(
+    tnt::Connection& conn, uint32_t elementId, const std::map<std::string, std::string>& attributes, bool readOnly);
+
+Expected<uint> deleteAssetElementFromAssetGroups(tntdb::Connection& conn, uint32_t assetElementId);
+
+/// Inserts info about an asset
 Expected<int64_t> insertIntoAssetElement(tntdb::Connection& conn, const std::string& elementName,
     uint16_t elementTypeId, uint32_t parentId, const std::string& status, uint16_t priority, uint16_t subtypeId,
     const std::string& assetTag, bool update);
 
-Expected<uint> insertIntoAssetExtAttributes(
-    tntdb::Connection& conn, uint32_t elementId, const std::map<std::string, std::string>& attributes, bool readOnly);
-Expected<uint> deleteAssetElementFromAssetGroups(tntdb::Connection& conn, uint32_t assetElementId);
 Expected<uint> insertElementIntoGroups(
     tntdb::Connection& conn, std::set<uint32_t> const& groups, uint32_t assetElementId);
 

@@ -381,79 +381,58 @@ Expected<uint> insertIntoAssetExtAttributes(
             {}
         ON DUPLICATE KEY UPDATE
             id_asset_ext_attribute = LAST_INSERT_ID(id_asset_ext_attribute)
-    )", tnt::multiInsert());
+    )", tnt::multiInsert({"keytag", "value", "id_asset_element", "read_only"}, attributes.size()));
 
     if (attributes.empty()) {
         return unexpected("no attributes to insert"_tr);
     }
 
     try {
-        std::vector<std::vector<std::string>> values;
-        for (const auto& [key, value] : attributes) {
-            values.push_back(std::make_tuple(key, value, elementId, readOnly));
-        }
-
-        conn.execute(sql, "values"_p = values);
-
-        std::stringstream ss;
-        ss << "INSERT INTO ";
-        ss << "t_bios_asset_ext_attributes (keytag, value, id_asset_element, read_only) ";
-        ss << "VALUES ";
-        for (size_t i = 0; i < attributes.size(); ++i) {
-            ss << (i > 0 ? ", " : "") << fmt::format("(:keytag_{0}, :value_{0}, :elId_{0}, :ro_{0})", i);
-        }
-        ss << " ON DUPLICATE KEY ";
-        ss << "   UPDATE ";
-        ss << "       id_asset_ext_attribute = LAST_INSERT_ID(id_asset_ext_attribute) ";
-
-        std::string sql = ss.str();
-        log_debug("sql: '%s'", sql.c_str());
         auto st = conn.prepare(sql);
 
         int count = 0;
         for (const auto& [key, value] : attributes) {
-            st.set(fmt::format("keytag_{}", count), key);
-            st.set(fmt::format("value_{}", count), value);
-            st.set(fmt::format("elId_{}", count), elementId);
-            st.set(fmt::format("ro_{}", count), readOnly);
+            st.bind(fmt::format("keytag_{}", count), key);
+            st.bind(fmt::format("value_{}", count), value);
+            st.bind(fmt::format("id_asset_element_{}", count), elementId);
+            st.bind(fmt::format("read_only_{}", count), readOnly);
             ++count;
         }
 
-        uint i = st.execute();
-        log_debug("%zu attributes written", i);
-        return i;
+        return st.execute();
     } catch (const std::exception& e) {
-        return unexpected(e.what());
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
 }
 
-Expected<uint> deleteAssetElementFromAssetGroups(tntdb::Connection& conn, uint32_t assetElementId)
+// =====================================================================================================================
+
+Expected<uint> deleteAssetElementFromAssetGroups(tnt::Connection& conn, uint32_t elementId)
 {
-    log_debug("asset_element_id = %" PRIu32, assetElementId);
+    static const std::string sql = R"(
+        DELETE FROM
+            t_bios_asset_group_relation
+        WHERE
+            id_asset_element = :elementId
+    )";
 
     try {
-        tntdb::Statement st = conn.prepareCached(
-            " DELETE FROM"
-            "   t_bios_asset_group_relation"
-            " WHERE"
-            "   id_asset_element = :element");
-
-        uint affectedRows = st.set("element", assetElementId).execute();
-        log_debug("[t_bios_asset_group_relation]: was deleted %" PRIu64 " rows", affectedRows);
-        return affectedRows;
+        return conn.execute(sql, "elementId"_p = elementId);
     } catch (const std::exception& e) {
         return unexpected(e.what());
     }
 }
 
+// =====================================================================================================================
+
 Expected<uint> insertElementIntoGroups(
-    tntdb::Connection& conn, std::set<uint32_t> const& groups, uint32_t assetElementId)
+    tntdb::Connection& conn, std::set<uint32_t> const& groups, uint32_t elementId)
 {
     LOG_START;
-    log_debug("  asset_element_id = %" PRIu32, assetElementId);
+    log_debug("  asset_element_id = %" PRIu32, elementId);
 
     // input parameters control
-    if (assetElementId == 0) {
+    if (elementId == 0) {
         auto msg = fmt::format("{}, {}", "ignore insert"_tr, "0 value of asset_element_id is not allowed"_tr);
         log_error(msg.c_str());
         return unexpected(msg);
@@ -473,7 +452,7 @@ Expected<uint> insertElementIntoGroups(
             "   (id_asset_group, id_asset_element)"
             " VALUES " +
             implode(groups, ", ", [&](uint32_t grp) -> std::string {
-                return "(" + std::to_string(grp) + "," + std::to_string(assetElementId) + ")";
+                return "(" + std::to_string(grp) + "," + std::to_string(elementId) + ")";
             }));
 
         uint affectedRows = st.execute();
@@ -490,6 +469,97 @@ Expected<uint> insertElementIntoGroups(
         return unexpected(e.what());
     }
 }
+
+Expected<int64_t> insertIntoAssetElement(tntdb::Connection& conn, const std::string& elementName,
+    uint16_t elementTypeId, uint32_t parentId, const std::string& status, uint16_t priority, uint16_t subtypeId,
+    const std::string& assetTag, bool update)
+{
+    log_debug("element_name = '%s'", elementName.c_str());
+    if (subtypeId == 0) {
+        subtypeId = persist::asset_subtype::N_A;
+    }
+
+    // input parameters control
+    if (!persist::is_ok_name(elementName.c_str())) {
+        auto msg = "wrong element name"_tr;
+        log_error("end: %s, %s", "ignore insert", msg.toString().c_str());
+        return unexpected(msg);
+    }
+
+    if (!persist::is_ok_element_type(elementTypeId)) {
+        auto msg = "0 value of element_type_id is not allowed"_tr;
+        log_error("end: %s, %s", "ignore insert", msg.toString().c_str());
+        return unexpected(msg);
+    }
+
+    // ASSUMPTION: all datacenters are unlocated elements
+    if (elementTypeId == persist::asset_type::DATACENTER && parentId != 0) {
+        return unexpected("cannot inset datacenter"_tr);
+    }
+
+    log_debug("input parameters are correct");
+
+    try {
+        // this concat with last_insert_id may have raise condition issue but hopefully is not important
+        tntdb::Statement statement;
+        if (update) {
+            statement = conn.prepareCached(
+                " INSERT INTO t_bios_asset_element "
+                " (name, id_type, id_subtype, id_parent, status, priority, asset_tag) "
+                " VALUES "
+                " (:name, :id_type, :id_subtype, :id_parent, :status, :priority, :asset_tag) "
+                " ON DUPLICATE KEY UPDATE name = :name ");
+        } else {
+            // @ is prohibited in name => name-@@-342 is unique
+            statement = conn.prepareCached(
+                " INSERT INTO t_bios_asset_element "
+                " (name, id_type, id_subtype, id_parent, status, priority, asset_tag) "
+                " VALUES "
+                " (concat (:name, '-@@-', " +
+                std::to_string(rand()) + "), :id_type, :id_subtype, :id_parent, :status, :priority, :asset_tag) ");
+        }
+        uint affected_rows;
+        if (parentId == 0) {
+            affected_rows = statement.set("name", elementName)
+                                .set("id_type", elementTypeId)
+                                .set("id_subtype", subtypeId)
+                                .setNull("id_parent")
+                                .set("status", status)
+                                .set("priority", priority)
+                                .set("asset_tag", assetTag)
+                                .execute();
+        } else {
+            affected_rows = statement.set("name", elementName)
+                                .set("id_type", elementTypeId)
+                                .set("id_subtype", subtypeId)
+                                .set("id_parent", parentId)
+                                .set("status", status)
+                                .set("priority", priority)
+                                .set("asset_tag", assetTag)
+                                .execute();
+        }
+
+        int64_t rowid = conn.lastInsertId();
+        log_debug("[t_bios_asset_element]: was inserted %" PRIu64 " rows", affected_rows);
+        if (!update) {
+            // it is insert, fix the name
+            statement = conn.prepareCached(
+                " UPDATE t_bios_asset_element "
+                "  set name = concat(:name, '-', :id) "
+                " WHERE id_asset_element = :id ");
+            statement.set("name", elementName).set("id", rowid).execute();
+        }
+
+        if (affected_rows == 0) {
+            return unexpected("Something going wrong");
+        }
+
+        return rowid;
+    } catch (const std::exception& e) {
+        return unexpected(e.what());
+    }
+}
+
 
 Expected<uint> deleteAssetLinksTo(tntdb::Connection& conn, uint32_t assetDeviceId)
 {
@@ -611,95 +681,6 @@ Expected<int64_t> insertIntoAssetLink(tntdb::Connection& conn, uint32_t assetEle
     }
 }
 
-Expected<int64_t> insertIntoAssetElement(tntdb::Connection& conn, const std::string& elementName,
-    uint16_t elementTypeId, uint32_t parentId, const std::string& status, uint16_t priority, uint16_t subtypeId,
-    const std::string& assetTag, bool update)
-{
-    log_debug("element_name = '%s'", elementName.c_str());
-    if (subtypeId == 0) {
-        subtypeId = persist::asset_subtype::N_A;
-    }
-
-    // input parameters control
-    if (!persist::is_ok_name(elementName.c_str())) {
-        auto msg = "wrong element name"_tr;
-        log_error("end: %s, %s", "ignore insert", msg.toString().c_str());
-        return unexpected(msg);
-    }
-
-    if (!persist::is_ok_element_type(elementTypeId)) {
-        auto msg = "0 value of element_type_id is not allowed"_tr;
-        log_error("end: %s, %s", "ignore insert", msg.toString().c_str());
-        return unexpected(msg);
-    }
-
-    // ASSUMPTION: all datacenters are unlocated elements
-    if (elementTypeId == persist::asset_type::DATACENTER && parentId != 0) {
-        return unexpected("cannot inset datacenter"_tr);
-    }
-
-    log_debug("input parameters are correct");
-
-    try {
-        // this concat with last_insert_id may have raise condition issue but hopefully is not important
-        tntdb::Statement statement;
-        if (update) {
-            statement = conn.prepareCached(
-                " INSERT INTO t_bios_asset_element "
-                " (name, id_type, id_subtype, id_parent, status, priority, asset_tag) "
-                " VALUES "
-                " (:name, :id_type, :id_subtype, :id_parent, :status, :priority, :asset_tag) "
-                " ON DUPLICATE KEY UPDATE name = :name ");
-        } else {
-            // @ is prohibited in name => name-@@-342 is unique
-            statement = conn.prepareCached(
-                " INSERT INTO t_bios_asset_element "
-                " (name, id_type, id_subtype, id_parent, status, priority, asset_tag) "
-                " VALUES "
-                " (concat (:name, '-@@-', " +
-                std::to_string(rand()) + "), :id_type, :id_subtype, :id_parent, :status, :priority, :asset_tag) ");
-        }
-        uint affected_rows;
-        if (parentId == 0) {
-            affected_rows = statement.set("name", elementName)
-                                .set("id_type", elementTypeId)
-                                .set("id_subtype", subtypeId)
-                                .setNull("id_parent")
-                                .set("status", status)
-                                .set("priority", priority)
-                                .set("asset_tag", assetTag)
-                                .execute();
-        } else {
-            affected_rows = statement.set("name", elementName)
-                                .set("id_type", elementTypeId)
-                                .set("id_subtype", subtypeId)
-                                .set("id_parent", parentId)
-                                .set("status", status)
-                                .set("priority", priority)
-                                .set("asset_tag", assetTag)
-                                .execute();
-        }
-
-        int64_t rowid = conn.lastInsertId();
-        log_debug("[t_bios_asset_element]: was inserted %" PRIu64 " rows", affected_rows);
-        if (!update) {
-            // it is insert, fix the name
-            statement = conn.prepareCached(
-                " UPDATE t_bios_asset_element "
-                "  set name = concat(:name, '-', :id) "
-                " WHERE id_asset_element = :id ");
-            statement.set("name", elementName).set("id", rowid).execute();
-        }
-
-        if (affected_rows == 0) {
-            return unexpected("Something going wrong");
-        }
-
-        return rowid;
-    } catch (const std::exception& e) {
-        return unexpected(e.what());
-    }
-}
 
 Expected<uint16_t> insertIntoMonitorDevice(
     tntdb::Connection& conn, uint16_t deviceTypeId, const std::string& deviceName)
