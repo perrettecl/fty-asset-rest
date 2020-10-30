@@ -1,8 +1,8 @@
 #pragma once
 
-#include <fty/traits.h>
-#include <fty/split.h>
 #include <fmt/format.h>
+#include <fty/split.h>
+#include <fty/traits.h>
 #include <fty_common_db_dbpath.h>
 #include <tntdb.h>
 
@@ -23,122 +23,48 @@ struct Arg<void>
     std::string_view name;
 };
 
-struct Empty
+
+namespace internal {
+
+    template <class T>
+    struct Empty
+    {
+        using is_empty = std::true_type;
+
+        constexpr operator T() const noexcept
+        {
+            return T{};
+        }
+        constexpr T operator()() const noexcept
+        {
+            return T{};
+        }
+    };
+
+} // namespace internal
+
+template <typename T>
+constexpr internal::Empty<T> empty{};
+
+template <typename T, typename = void>
+struct is_empty : std::false_type
+{
+};
+
+template <typename T>
+struct is_empty<T, std::conditional_t<false, fty::is_cont_helper<typename T::is_empty>, void>> : public std::true_type
 {
 };
 
 // =====================================================================================================================
 
+class Statement;
+class ConstIterator;
+class Rows;
+class Row;
+
 class Connection
 {
-public:
-    class Statement;
-    class ConstIterator;
-    class Rows;
-
-    // =================================================================================================================
-
-    class Row
-    {
-    public:
-        Row() = default;
-
-        template <typename T>
-        T get(const std::string& col) const;
-
-        std::string get(const std::string& col) const;
-
-        template <typename T>
-        void get(const std::string& name, T& val) const;
-
-    private:
-        Row(const tntdb::Row& row);
-
-        friend class Connection::Statement;
-        friend class Connection::ConstIterator;
-        friend class Connection::Rows;
-        tntdb::Row m_row;
-    };
-
-    // =================================================================================================================
-
-    class Rows
-    {
-    public:
-        ConstIterator begin() const;
-        ConstIterator end() const;
-        size_t        size() const;
-        bool          empty() const;
-        Row           operator[](size_t off) const;
-
-    private:
-        Rows(const tntdb::Result& rows);
-
-        tntdb::Result m_rows;
-        friend class ConstIterator;
-        friend class Connection::Statement;
-    };
-
-    // =================================================================================================================
-
-    class ConstIterator : public std::iterator<std::random_access_iterator_tag, Row>
-    {
-    public:
-        using ConstReference = const value_type&;
-        using ConstPointer   = const value_type*;
-
-    private:
-        Rows   m_rows;
-        Row    m_current;
-        size_t m_offset;
-
-        void setOffset(size_t off);
-
-    public:
-        ConstIterator(const Rows& r, size_t off);
-        bool            operator==(const ConstIterator& it) const;
-        bool            operator!=(const ConstIterator& it) const;
-        ConstIterator&  operator++();
-        ConstIterator   operator++(int);
-        ConstIterator   operator--();
-        ConstIterator   operator--(int);
-        ConstReference  operator*() const;
-        ConstPointer    operator->() const;
-        ConstIterator&  operator+=(difference_type n);
-        ConstIterator   operator+(difference_type n) const;
-        ConstIterator&  operator-=(difference_type n);
-        ConstIterator   operator-(difference_type n) const;
-        difference_type operator-(const ConstIterator& it) const;
-    };
-
-    // =================================================================================================================
-
-    class Statement
-    {
-    public:
-        template <typename T>
-        Statement& bind(const std::string& name, const T& value);
-
-        template <typename TArg, typename... TArgs>
-        Statement& bind(TArg&& val, TArgs&&... args);
-
-        template <typename TArg>
-        Statement& bind(Arg<TArg>&& arg);
-
-    public:
-        Row selectRow() const;
-        Rows select() const;
-        uint execute() const;
-
-    private:
-        Statement(const tntdb::Statement& st);
-
-        mutable tntdb::Statement m_st;
-        friend class Connection;
-    };
-
-    // =================================================================================================================
-
 public:
     Connection();
     Statement prepare(const std::string& sql);
@@ -153,20 +79,145 @@ public:
     template <typename... Args>
     uint execute(const std::string& queryStr, Args&&... args);
 
+    int64_t lastInsertId();
+
 private:
     tntdb::Connection m_connection;
+    friend class Transaction;
 };
 
-std::string multiInsert(std::initializer_list<std::string> cols, size_t count)
+// =====================================================================================================================
+
+class Row
+{
+public:
+    Row() = default;
+
+    template <typename T>
+    T get(const std::string& col) const;
+
+    std::string get(const std::string& col) const;
+
+    template <typename T>
+    void get(const std::string& name, T& val) const;
+
+private:
+    Row(const tntdb::Row& row);
+
+    friend class Statement;
+    friend class ConstIterator;
+    friend class Rows;
+    tntdb::Row m_row;
+};
+
+// =================================================================================================================
+
+class Rows
+{
+public:
+    ConstIterator begin() const;
+    ConstIterator end() const;
+    size_t        size() const;
+    bool          empty() const;
+    Row           operator[](size_t off) const;
+
+private:
+    Rows(const tntdb::Result& rows);
+
+    tntdb::Result m_rows;
+    friend class ConstIterator;
+    friend class Statement;
+};
+
+// =====================================================================================================================
+
+class ConstIterator : public std::iterator<std::random_access_iterator_tag, Row>
+{
+public:
+    using ConstReference = const value_type&;
+    using ConstPointer   = const value_type*;
+
+private:
+    Rows   m_rows;
+    Row    m_current;
+    size_t m_offset;
+
+    void setOffset(size_t off);
+
+public:
+    ConstIterator(const Rows& r, size_t off);
+    bool            operator==(const ConstIterator& it) const;
+    bool            operator!=(const ConstIterator& it) const;
+    ConstIterator&  operator++();
+    ConstIterator   operator++(int);
+    ConstIterator   operator--();
+    ConstIterator   operator--(int);
+    ConstReference  operator*() const;
+    ConstPointer    operator->() const;
+    ConstIterator&  operator+=(difference_type n);
+    ConstIterator   operator+(difference_type n) const;
+    ConstIterator&  operator-=(difference_type n);
+    ConstIterator   operator-(difference_type n) const;
+    difference_type operator-(const ConstIterator& it) const;
+};
+
+// =====================================================================================================================
+
+class Statement
+{
+public:
+    template <typename T>
+    Statement& bind(const std::string& name, const T& value);
+
+    template <typename TArg, typename... TArgs>
+    Statement& bind(TArg&& val, TArgs&&... args);
+
+    template <typename TArg>
+    Statement& bind(Arg<TArg>&& arg);
+
+    template <typename TArg, typename... TArgs>
+    Statement& bind(size_t count, TArg&& val, TArgs&&... args);
+
+    template <typename TArg>
+    Statement& bind(size_t count, Arg<TArg>&& arg);
+
+    Statement& bind();
+public:
+    Row  selectRow() const;
+    Rows select() const;
+    uint execute() const;
+
+private:
+    Statement(const tntdb::Statement& st);
+
+    mutable tntdb::Statement m_st;
+    friend class Connection;
+};
+
+class Transaction
+{
+public:
+    Transaction(Connection& con);
+
+    void commit();
+    void rollback();
+private:
+    tntdb::Transaction m_trans;
+};
+
+// =====================================================================================================================
+
+
+inline std::string multiInsert(std::initializer_list<std::string> cols, size_t count)
 {
     std::vector<std::string> colsStr;
-    for(const auto& col: cols) {
-        colsStr.push_back(":"+col+"_{0}");
+    for (const auto& col : cols) {
+        colsStr.push_back(":" + col + "_{0}");
     }
 
     std::string out;
     for (size_t i = 0; i < count; ++i) {
-        out += (i > 0 ? ", " : "") + fmt::format("("+fty::implode(colsStr, ", ")+")", i);
+        out += (i > 0 ? ", " : "") + fmt::format("(" + fty::implode(colsStr, ", ") + ")", i);
     }
     return out;
 }
@@ -179,6 +230,7 @@ std::string multiInsert(std::initializer_list<std::string> cols, size_t count)
 
 namespace tnt::internal {
 
+
 struct Arg
 {
     std::string_view str;
@@ -186,7 +238,7 @@ struct Arg
     template <typename T>
     auto operator=(T&& value) const
     {
-        if constexpr(std::is_same_v<T, Empty>) {
+        if constexpr (std::is_empty<T>::value) {
             return tnt::Arg<void>{str};
         } else {
             return tnt::Arg<T>{str, std::forward<T>(value)};
@@ -210,19 +262,19 @@ inline tnt::Connection::Connection()
 {
 }
 
-inline tnt::Connection::Statement tnt::Connection::prepare(const std::string& sql)
+inline tnt::Statement tnt::Connection::prepare(const std::string& sql)
 {
     return Statement(m_connection.prepareCached(sql));
 }
 
 template <typename... Args>
-inline tnt::Connection::Row tnt::Connection::selectRow(const std::string& queryStr, Args&&... args)
+inline tnt::Row tnt::Connection::selectRow(const std::string& queryStr, Args&&... args)
 {
     return Statement(m_connection.prepareCached(queryStr)).bind(std::forward<Args>(args)...).selectRow();
 }
 
 template <typename... Args>
-inline tnt::Connection::Rows tnt::Connection::select(const std::string& queryStr, Args&&... args)
+inline tnt::Rows tnt::Connection::select(const std::string& queryStr, Args&&... args)
 {
     return Statement(m_connection.prepareCached(queryStr)).bind(std::forward<Args>(args)...).select();
 }
@@ -233,27 +285,32 @@ uint tnt::Connection::execute(const std::string& queryStr, Args&&... args)
     return Statement(m_connection.prepareCached(queryStr)).bind(std::forward<Args>(args)...).execute();
 }
 
+int64_t tnt::Connection::lastInsertId()
+{
+    return m_connection.lastInsertId();
+}
+
 // =====================================================================================================================
 // Statement impl
 // =====================================================================================================================
 
 template <typename T>
-inline tnt::Connection::Statement& tnt::Connection::Statement::bind(const std::string& name, const T& value)
+inline tnt::Statement& tnt::Statement::bind(const std::string& name, const T& value)
 {
     m_st.set(name, value);
     return *this;
 }
 
 template <typename TArg, typename... TArgs>
-inline tnt::Connection::Statement& tnt::Connection::Statement::bind(TArg&& val, TArgs&&... args)
+inline tnt::Statement& tnt::Statement::bind(TArg&& val, TArgs&&... args)
 {
     bind(std::forward<TArg>(val));
-    bind(std::forward<TArgs...>(args)...);
+    bind(std::forward<TArgs>(args)...);
     return *this;
 }
 
 template <typename TArg>
-inline tnt::Connection::Statement& tnt::Connection::Statement::bind(Arg<TArg>&& arg)
+inline tnt::Statement& tnt::Statement::bind(Arg<TArg>&& arg)
 {
     if constexpr (std::is_same_v<TArg, void>) {
         m_st.setNull(arg.name.data());
@@ -263,22 +320,48 @@ inline tnt::Connection::Statement& tnt::Connection::Statement::bind(Arg<TArg>&& 
     return *this;
 }
 
-inline tnt::Connection::Row tnt::Connection::Statement::selectRow() const
+inline tnt::Statement& tnt::Statement::bind()
+{
+    return *this;
+}
+
+
+template <typename TArg, typename... TArgs>
+inline tnt::Statement& tnt::Statement::bind(size_t count, TArg&& val, TArgs&&... args)
+{
+    bind(count, std::forward<TArg>(val));
+    bind(count, std::forward<TArgs>(args)...);
+    return *this;
+}
+
+template <typename TArg>
+inline tnt::Statement& tnt::Statement::bind(size_t count, Arg<TArg>&& arg)
+{
+    if constexpr (std::is_same_v<TArg, void>) {
+        m_st.setNull(fmt::format("{}_{}", arg.name, count));
+    } else {
+        m_st.set(fmt::format("{}_{}", arg.name, count), arg.value);
+    }
+    return *this;
+}
+
+
+inline tnt::Row tnt::Statement::selectRow() const
 {
     return Row(m_st.selectRow());
 }
 
-inline tnt::Connection::Rows tnt::Connection::Statement::select() const
+inline tnt::Rows tnt::Statement::select() const
 {
     return Rows(m_st.select());
 }
 
-inline uint tnt::Connection::Statement::execute() const
+inline uint tnt::Statement::execute() const
 {
     return m_st.execute();
 }
 
-inline tnt::Connection::Statement::Statement(const tntdb::Statement& st)
+inline tnt::Statement::Statement(const tntdb::Statement& st)
     : m_st(st)
 {
 }
@@ -288,7 +371,7 @@ inline tnt::Connection::Statement::Statement(const tntdb::Statement& st)
 // =====================================================================================================================
 
 template <typename T>
-inline T tnt::Connection::Row::get(const std::string& col) const
+inline T tnt::Row::get(const std::string& col) const
 {
     if constexpr (std::is_same_v<T, std::string>) {
         return m_row.getString(col);
@@ -307,7 +390,7 @@ inline T tnt::Connection::Row::get(const std::string& col) const
     } else if constexpr (std::is_same_v<T, uint32_t>) {
         return m_row.getUnsigned32(col);
     } else if constexpr (std::is_same_v<T, uint16_t>) {
-        return m_row.getUnsigned(col);
+        return uint16_t(m_row.getUnsigned(col));
     } else if constexpr (std::is_same_v<T, uint8_t>) {
         return uint8_t(m_row.getUnsigned(col));
     } else if constexpr (std::is_same_v<T, float>) {
@@ -319,18 +402,18 @@ inline T tnt::Connection::Row::get(const std::string& col) const
     }
 }
 
-inline std::string tnt::Connection::Row::get(const std::string& col) const
+inline std::string tnt::Row::get(const std::string& col) const
 {
     return m_row.getString(col);
 }
 
 template <typename T>
-inline void tnt::Connection::Row::get(const std::string& name, T& val) const
+inline void tnt::Row::get(const std::string& name, T& val) const
 {
     val = get<std::decay_t<T>>(name);
 }
 
-inline tnt::Connection::Row::Row(const tntdb::Row& row)
+inline tnt::Row::Row(const tntdb::Row& row)
     : m_row(row)
 {
 }
@@ -340,131 +423,150 @@ inline tnt::Connection::Row::Row(const tntdb::Row& row)
 // =====================================================================================================================
 
 
-inline void tnt::Connection::ConstIterator::setOffset(size_t off)
+inline void tnt::ConstIterator::setOffset(size_t off)
 {
     if (off != m_offset) {
         m_offset = off;
         if (m_offset < m_rows.m_rows.size())
-            m_current = m_rows.m_rows.getRow(m_offset);
+            m_current = m_rows.m_rows.getRow(unsigned(m_offset));
     }
 }
 
-inline tnt::Connection::ConstIterator::ConstIterator(const Rows& r, size_t off)
+inline tnt::ConstIterator::ConstIterator(const Rows& r, size_t off)
     : m_rows(r)
     , m_offset(off)
 {
     if (m_offset < r.m_rows.size())
-        m_current = r.m_rows.getRow(m_offset);
+        m_current = r.m_rows.getRow(unsigned(m_offset));
 }
 
-inline bool tnt::Connection::ConstIterator::operator==(const ConstIterator& it) const
+inline bool tnt::ConstIterator::operator==(const ConstIterator& it) const
 {
     return m_offset == it.m_offset;
 }
 
-inline bool tnt::Connection::ConstIterator::operator!=(const ConstIterator& it) const
+inline bool tnt::ConstIterator::operator!=(const ConstIterator& it) const
 {
     return !operator==(it);
 }
 
-inline tnt::Connection::ConstIterator& tnt::Connection::ConstIterator::operator++()
+inline tnt::ConstIterator& tnt::ConstIterator::operator++()
 {
     setOffset(m_offset + 1);
     return *this;
 }
 
-inline tnt::Connection::ConstIterator tnt::Connection::ConstIterator::operator++(int)
+inline tnt::ConstIterator tnt::ConstIterator::operator++(int)
 {
     ConstIterator ret = *this;
     setOffset(m_offset + 1);
     return ret;
 }
 
-inline tnt::Connection::ConstIterator tnt::Connection::ConstIterator::operator--()
+inline tnt::ConstIterator tnt::ConstIterator::operator--()
 {
     setOffset(m_offset - 1);
     return *this;
 }
 
-inline tnt::Connection::ConstIterator tnt::Connection::ConstIterator::operator--(int)
+inline tnt::ConstIterator tnt::ConstIterator::operator--(int)
 {
     ConstIterator ret = *this;
     setOffset(m_offset - 1);
     return ret;
 }
 
-inline tnt::Connection::ConstIterator::ConstReference tnt::Connection::ConstIterator::operator*() const
+inline tnt::ConstIterator::ConstReference tnt::ConstIterator::operator*() const
 {
     return m_current;
 }
 
-inline tnt::Connection::ConstIterator::ConstPointer tnt::Connection::ConstIterator::operator->() const
+inline tnt::ConstIterator::ConstPointer tnt::ConstIterator::operator->() const
 {
     return &m_current;
 }
 
-inline tnt::Connection::ConstIterator& tnt::Connection::ConstIterator::operator+=(difference_type n)
+inline tnt::ConstIterator& tnt::ConstIterator::operator+=(difference_type n)
 {
-    setOffset(m_offset + n);
+    setOffset(m_offset + size_t(n));
     return *this;
 }
 
-inline tnt::Connection::ConstIterator tnt::Connection::ConstIterator::operator+(difference_type n) const
+inline tnt::ConstIterator tnt::ConstIterator::operator+(difference_type n) const
 {
     ConstIterator it(*this);
     it += n;
     return it;
 }
 
-inline tnt::Connection::ConstIterator& tnt::Connection::ConstIterator::operator-=(difference_type n)
+inline tnt::ConstIterator& tnt::ConstIterator::operator-=(difference_type n)
 {
-    setOffset(m_offset - n);
+    setOffset(m_offset - size_t(n));
     return *this;
 }
 
-inline tnt::Connection::ConstIterator tnt::Connection::ConstIterator::operator-(difference_type n) const
+inline tnt::ConstIterator tnt::ConstIterator::operator-(difference_type n) const
 {
     ConstIterator it(*this);
     it -= n;
     return it;
 }
 
-inline tnt::Connection::ConstIterator::difference_type tnt::Connection::ConstIterator::operator-(
+inline tnt::ConstIterator::difference_type tnt::ConstIterator::operator-(
     const ConstIterator& it) const
 {
-    return m_offset - it.m_offset;
+    return tnt::ConstIterator::difference_type(m_offset - it.m_offset);
 }
 
 // =====================================================================================================================
 // Rows impl
 // =====================================================================================================================
 
-inline tnt::Connection::ConstIterator tnt::Connection::Rows::begin() const
+inline tnt::ConstIterator tnt::Rows::begin() const
 {
-    return tnt::Connection::ConstIterator(*this, 0);
+    return tnt::ConstIterator(*this, 0);
 }
 
-inline tnt::Connection::ConstIterator tnt::Connection::Rows::end() const
+inline tnt::ConstIterator tnt::Rows::end() const
 {
-    return tnt::Connection::ConstIterator(*this, size());
+    return tnt::ConstIterator(*this, size());
 }
 
-size_t tnt::Connection::Rows::size() const
+size_t tnt::Rows::size() const
 {
     return m_rows.size();
 }
 
-bool tnt::Connection::Rows::empty() const
+bool tnt::Rows::empty() const
 {
     return m_rows.empty();
 }
 
-tnt::Connection::Row tnt::Connection::Rows::operator[](size_t off) const
+tnt::Row tnt::Rows::operator[](size_t off) const
 {
-    return tnt::Connection::Row(m_rows.getRow(off));
+    return tnt::Row(m_rows.getRow(unsigned(off)));
 }
 
-inline tnt::Connection::Rows::Rows(const tntdb::Result& rows)
+inline tnt::Rows::Rows(const tntdb::Result& rows)
     : m_rows(rows)
 {
 }
+
+// =====================================================================================================================
+// Transaction impl
+// =====================================================================================================================
+
+tnt::Transaction::Transaction(Connection& con):
+    m_trans(tntdb::Transaction(con.m_connection))
+{}
+
+void tnt::Transaction::commit()
+{
+    m_trans.commit();
+}
+
+void tnt::Transaction::rollback()
+{
+    m_trans.rollback();
+}
+

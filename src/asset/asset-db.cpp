@@ -149,8 +149,8 @@ Expected<AssetElement> selectAssetElementByName(const std::string& elementName)
     }
 
     try {
-        tnt::Connection      db;
-        tnt::Connection::Row row;
+        tnt::Connection db;
+        tnt::Row        row;
 
         try {
             row = db.selectRow(nameSql, "name"_p = elementName);
@@ -298,7 +298,7 @@ Expected<std::map<uint32_t, std::string>> selectAssetElementGroups(uint32_t elem
         for (const auto& row : res) {
             item.emplace(row.get<uint32_t>("id_asset_group"), row.get("name"));
         }
-        return item;
+        return std::move(item);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
@@ -329,15 +329,10 @@ Expected<uint> updateAssetElement(tnt::Connection& db, uint32_t elementId, uint3
             "id"_p        = elementId,
             "status"_p    = status,
             "priority"_p  = priority,
-            "assetTag"_p  = assetTag
+            "assetTag"_p  = assetTag,
+            "parentId"_p  = parentId ? parentId : tnt::empty<uint32_t>()
         );
         // clang-format on
-
-        if (parentId != 0) {
-            st.bind("parentId"_p = parentId);
-        } else {
-            st.bind("parentId"_p = tnt::Empty());
-        }
 
         return st.execute();
     } catch (const std::exception& e) {
@@ -381,7 +376,8 @@ Expected<uint> insertIntoAssetExtAttributes(
             {}
         ON DUPLICATE KEY UPDATE
             id_asset_ext_attribute = LAST_INSERT_ID(id_asset_ext_attribute)
-    )", tnt::multiInsert({"keytag", "value", "id_asset_element", "read_only"}, attributes.size()));
+    )",
+        tnt::multiInsert({"keytag", "value", "id_asset_element", "read_only"}, attributes.size()));
 
     if (attributes.empty()) {
         return unexpected("no attributes to insert"_tr);
@@ -392,11 +388,14 @@ Expected<uint> insertIntoAssetExtAttributes(
 
         int count = 0;
         for (const auto& [key, value] : attributes) {
-            st.bind(fmt::format("keytag_{}", count), key);
-            st.bind(fmt::format("value_{}", count), value);
-            st.bind(fmt::format("id_asset_element_{}", count), elementId);
-            st.bind(fmt::format("read_only_{}", count), readOnly);
-            ++count;
+            // clang-format off
+            st.bind(count++,
+                "keytag"_p           = key,
+                "value"_p            = value,
+                "id_asset_element"_p = elementId,
+                "read_only"_p        = readOnly
+            );
+            // clang-format on
         }
 
         return st.execute();
@@ -419,512 +418,483 @@ Expected<uint> deleteAssetElementFromAssetGroups(tnt::Connection& conn, uint32_t
     try {
         return conn.execute(sql, "elementId"_p = elementId);
     } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<uint> insertElementIntoGroups(tnt::Connection& conn, const std::set<uint32_t>& groups, uint32_t elementId)
+{
+    // input parameters control
+    if (elementId == 0) {
+        auto msg = fmt::format("{}, {}", "ignore insert"_tr, "0 value of asset_element_id is not allowed"_tr);
+        logError(msg);
+        return unexpected(msg);
+    }
+
+    if (groups.empty()) {
+        logDebug("nothing to insert");
+        return 0;
+    }
+
+    const std::string sql = fmt::format(R"(
+        INSERT INTO
+            t_bios_asset_group_relation
+            (id_asset_group, id_asset_element)
+         VALUES {}
+    )",
+        tnt::multiInsert({"gid, elementId"}, groups.size()));
+
+    try {
+        auto   st    = conn.prepare(sql);
+        size_t count = 0;
+        for (uint32_t gid : groups) {
+            // clang-format off
+            st.bind(count++,
+                "gid"_p       = gid,
+                "elementId"_p = elementId
+            );
+            // clang-format on
+        }
+
+        uint affectedRows = st.execute();
+
+        if (affectedRows == groups.size()) {
+            return affectedRows;
+        } else {
+            auto msg = "not all links were inserted"_tr;
+            logError(msg.toString());
+            return unexpected(msg);
+        }
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<int64_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElement& element, bool update)
+{
+    if (!persist::is_ok_name(element.name.c_str())) {
+        return unexpected("wrong element name"_tr);
+    }
+
+    if (!persist::is_ok_element_type(element.typeId)) {
+        return unexpected("{} value of element_type_id is not allowed"_tr.format(element.typeId));
+    }
+
+    if (element.typeId == persist::asset_type::DATACENTER && element.parentId != 0) {
+        return unexpected("cannot inset datacenter"_tr);
+    }
+
+    static const std::string sql = R"(
+        INSERT INTO t_bios_asset_element
+            (name, id_type, id_subtype, id_parent, status, priority, asset_tag)
+        VALUES
+            (:name, :typeId, :subtypeId, :parentId, :status, :priority, :assetTag)
+        ON DUPLICATE KEY UPDATE name = :name
+    )";
+
+    static const std::string updateSql = R"(
+        UPDATE
+            t_bios_asset_element
+        SET
+            name = concat(:name, '-', :id)
+        WHERE
+            id_asset_element = :id
+    )";
+
+    try {
+        auto st = conn.prepare(sql);
+        // clang-format off
+        st.bind(
+            "name"_p      = update ? element.name : element.name + "-@@-" + std::to_string(rand()),
+            "typeId"_p    = element.typeId,
+            "subtypeId"_p = element.subtypeId != 0 ? element.subtypeId : persist::asset_subtype::N_A,
+            "status"_p    = element.status,
+            "priority"_p  = element.priority,
+            "assetTag"_p  = element.assetTag,
+            "parentId"_p  = element.parentId ? element.parentId : tnt::empty<uint32_t>()
+        );
+        // clang-format on
+        uint affectedRows = st.execute();
+
+        int64_t rowid = conn.lastInsertId();
+
+        if (!update) {
+            // clang-format off
+            conn.execute(updateSql,
+                "name"_p = element.name,
+                "id"_p   = rowid
+            );
+            // clang-format on
+        }
+
+        if (affectedRows == 0) {
+            return unexpected("Something going wrong");
+        }
+
+        return rowid;
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), element.name));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<uint> deleteAssetLinksTo(tnt::Connection& conn, uint32_t elementId)
+{
+    static const std::string sql = R"(
+        DELETE FROM
+            t_bios_asset_link
+        WHERE
+            id_asset_device_dest = :dest
+    )";
+
+    try {
+        return conn.execute(sql, "dest"_p = elementId);
+    } catch (const std::exception& e) {
         return unexpected(e.what());
     }
 }
 
 // =====================================================================================================================
 
-Expected<uint> insertElementIntoGroups(
-    tntdb::Connection& conn, std::set<uint32_t> const& groups, uint32_t elementId)
+Expected<uint> insertIntoAssetLinks(tnt::Connection& conn, const std::vector<AssetLink>& links)
 {
-    LOG_START;
-    log_debug("  asset_element_id = %" PRIu32, elementId);
-
-    // input parameters control
-    if (elementId == 0) {
-        auto msg = fmt::format("{}, {}", "ignore insert"_tr, "0 value of asset_element_id is not allowed"_tr);
-        log_error(msg.c_str());
-        return unexpected(msg);
-    }
-
-    if (groups.empty()) {
-        log_debug("nothing to insert");
-        return 0;
-    }
-
-    log_debug("input parameters are correct");
-
-    try {
-        tntdb::Statement st = conn.prepare(
-            " INSERT INTO"
-            "   t_bios_asset_group_relation"
-            "   (id_asset_group, id_asset_element)"
-            " VALUES " +
-            implode(groups, ", ", [&](uint32_t grp) -> std::string {
-                return "(" + std::to_string(grp) + "," + std::to_string(elementId) + ")";
-            }));
-
-        uint affectedRows = st.execute();
-        log_debug("[t_bios_asset_group_relation]: was inserted %" PRIu64 " rows", affectedRows);
-
-        if (affectedRows == groups.size()) {
-            return affectedRows;
-        } else {
-            auto msg = "not all links were inserted"_tr;
-            log_error("%s", msg.toString().c_str());
-            return unexpected(msg);
-        }
-    } catch (const std::exception& e) {
-        return unexpected(e.what());
-    }
-}
-
-Expected<int64_t> insertIntoAssetElement(tntdb::Connection& conn, const std::string& elementName,
-    uint16_t elementTypeId, uint32_t parentId, const std::string& status, uint16_t priority, uint16_t subtypeId,
-    const std::string& assetTag, bool update)
-{
-    log_debug("element_name = '%s'", elementName.c_str());
-    if (subtypeId == 0) {
-        subtypeId = persist::asset_subtype::N_A;
-    }
-
-    // input parameters control
-    if (!persist::is_ok_name(elementName.c_str())) {
-        auto msg = "wrong element name"_tr;
-        log_error("end: %s, %s", "ignore insert", msg.toString().c_str());
-        return unexpected(msg);
-    }
-
-    if (!persist::is_ok_element_type(elementTypeId)) {
-        auto msg = "0 value of element_type_id is not allowed"_tr;
-        log_error("end: %s, %s", "ignore insert", msg.toString().c_str());
-        return unexpected(msg);
-    }
-
-    // ASSUMPTION: all datacenters are unlocated elements
-    if (elementTypeId == persist::asset_type::DATACENTER && parentId != 0) {
-        return unexpected("cannot inset datacenter"_tr);
-    }
-
-    log_debug("input parameters are correct");
-
-    try {
-        // this concat with last_insert_id may have raise condition issue but hopefully is not important
-        tntdb::Statement statement;
-        if (update) {
-            statement = conn.prepareCached(
-                " INSERT INTO t_bios_asset_element "
-                " (name, id_type, id_subtype, id_parent, status, priority, asset_tag) "
-                " VALUES "
-                " (:name, :id_type, :id_subtype, :id_parent, :status, :priority, :asset_tag) "
-                " ON DUPLICATE KEY UPDATE name = :name ");
-        } else {
-            // @ is prohibited in name => name-@@-342 is unique
-            statement = conn.prepareCached(
-                " INSERT INTO t_bios_asset_element "
-                " (name, id_type, id_subtype, id_parent, status, priority, asset_tag) "
-                " VALUES "
-                " (concat (:name, '-@@-', " +
-                std::to_string(rand()) + "), :id_type, :id_subtype, :id_parent, :status, :priority, :asset_tag) ");
-        }
-        uint affected_rows;
-        if (parentId == 0) {
-            affected_rows = statement.set("name", elementName)
-                                .set("id_type", elementTypeId)
-                                .set("id_subtype", subtypeId)
-                                .setNull("id_parent")
-                                .set("status", status)
-                                .set("priority", priority)
-                                .set("asset_tag", assetTag)
-                                .execute();
-        } else {
-            affected_rows = statement.set("name", elementName)
-                                .set("id_type", elementTypeId)
-                                .set("id_subtype", subtypeId)
-                                .set("id_parent", parentId)
-                                .set("status", status)
-                                .set("priority", priority)
-                                .set("asset_tag", assetTag)
-                                .execute();
-        }
-
-        int64_t rowid = conn.lastInsertId();
-        log_debug("[t_bios_asset_element]: was inserted %" PRIu64 " rows", affected_rows);
-        if (!update) {
-            // it is insert, fix the name
-            statement = conn.prepareCached(
-                " UPDATE t_bios_asset_element "
-                "  set name = concat(:name, '-', :id) "
-                " WHERE id_asset_element = :id ");
-            statement.set("name", elementName).set("id", rowid).execute();
-        }
-
-        if (affected_rows == 0) {
-            return unexpected("Something going wrong");
-        }
-
-        return rowid;
-    } catch (const std::exception& e) {
-        return unexpected(e.what());
-    }
-}
-
-
-Expected<uint> deleteAssetLinksTo(tntdb::Connection& conn, uint32_t assetDeviceId)
-{
-    log_debug("  asset_device_id = %" PRIu32, assetDeviceId);
-
-    try {
-        tntdb::Statement st = conn.prepareCached(
-            " DELETE FROM"
-            "   t_bios_asset_link"
-            " WHERE"
-            "   id_asset_device_dest = :dest");
-
-        uint affectedRows = st.set("dest", assetDeviceId).execute();
-        log_debug("[t_bios_asset_link]: was deleted %" PRIu64 " rows", affectedRows);
-        return affectedRows;
-    } catch (const std::exception& e) {
-        return unexpected(e.what());
-    }
-}
-
-Expected<uint> insertIntoAssetLinks(tntdb::Connection& conn, const std::vector<AssetLink>& links)
-{
-    // input parameters control
     if (links.empty()) {
-        log_debug("nothing to insert");
+        logDebug("nothing to insert");
         return 0;
     }
-    log_debug("input parameters are correct");
 
-    uint affected_rows = 0;
-    for (auto& one_link : links) {
-        auto ret =
-            insertIntoAssetLink(conn, one_link.src, one_link.dest, one_link.type, one_link.srcOut, one_link.destIn);
+    uint affectedRows = 0;
+    for (auto& link : links) {
+        auto ret = insertIntoAssetLink(conn, link);
 
         if (ret) {
-            affected_rows++;
+            affectedRows++;
         }
     }
 
-    if (affected_rows == links.size()) {
-        log_debug("all links were inserted successfully");
-        return affected_rows;
+    if (affectedRows == links.size()) {
+        return affectedRows;
     } else {
-        log_error("%s", "not all links were inserted");
+        logError("not all links were inserted");
         return unexpected("not all links were inserted");
     }
 }
 
-Expected<int64_t> insertIntoAssetLink(tntdb::Connection& conn, uint32_t assetElementSrcId, uint32_t assetElementDestId,
-    uint16_t linkTypeId, const std::string& srcOut, const std::string& destIn)
+// =====================================================================================================================
+
+Expected<int64_t> insertIntoAssetLink(tnt::Connection& conn, const AssetLink& link)
 {
     // input parameters control
-    if (assetElementDestId == 0) {
-        log_error("ignore insert: %s", "destination device is not specified");
+    if (link.dest == 0) {
+        logError("ignore insert: destination device is not specified");
         return unexpected("destination device is not specified");
     }
 
-    if (assetElementSrcId == 0) {
-        log_error("ignore insert: %s", "source device is not specified");
+    if (link.src == 0) {
+        logError("ignore insert: source device is not specified");
         return unexpected("source device is not specified");
     }
 
-    if (!persist::is_ok_link_type(uint8_t(linkTypeId))) {
-        log_error("ignore insert: %s", "wrong link type");
+    if (!persist::is_ok_link_type(uint8_t(link.type))) {
+        logError("ignore insert: wrong link type");
         return unexpected("wrong link type");
     }
 
-    // src_out and dest_in can take any value from available range
-    log_debug("input parameters are correct");
+    static const std::string sql = R"(
+        INSERT INTO
+            t_bios_asset_link
+            (id_asset_device_src, id_asset_device_dest, id_asset_link_type, src_out, dest_in)
+        SELECT
+            v1.id_asset_element, v2.id_asset_element, :linktype, :out, :in
+        FROM
+            v_bios_asset_device v1,
+            v_bios_asset_device v2
+        WHERE
+            v1.id_asset_element = :src AND
+            v2.id_asset_element = :dest AND
+        NOT EXISTS (
+            SELECT
+                id_link
+            FROM
+                t_bios_asset_link v3
+            WHERE
+                v3.id_asset_device_src = v1.id_asset_element AND
+                v3.id_asset_device_dest = v2.id_asset_element AND
+                ( ((v3.src_out = :out) AND (v3.dest_in = :in)) ) AND
+                v3.id_asset_device_dest = v2.id_asset_element
+        )
+    )";
 
     try {
-        tntdb::Statement st = conn.prepareCached(
-            " INSERT INTO"
-            "   t_bios_asset_link"
-            "   (id_asset_device_src, id_asset_device_dest,"
-            "        id_asset_link_type, src_out, dest_in)"
-            " SELECT"
-            "   v1.id_asset_element, v2.id_asset_element, :linktype,"
-            "   :out, :in"
-            " FROM"
-            "   v_bios_asset_device v1," // src
-            "   v_bios_asset_device v2"  // dvc
-            " WHERE"
-            "   v1.id_asset_element = :src AND"
-            "   v2.id_asset_element = :dest AND"
-            "   NOT EXISTS"
-            "     ("
-            "           SELECT"
-            "             id_link"
-            "           FROM"
-            "             t_bios_asset_link v3"
-            "           WHERE"
-            "               v3.id_asset_device_src = v1.id_asset_element AND"
-            "               v3.id_asset_device_dest = v2.id_asset_element AND"
-            "               ( ((v3.src_out = :out) AND (v3.dest_in = :in)) ) AND"
-            "               v3.id_asset_device_dest = v2.id_asset_element"
-            "    )");
+        // clang-format off
+        conn.execute(sql,
+            "src"_p      = link.src,
+            "dest"_p     = link.dest,
+            "linktype"_p = link.type,
+            "out"_p      = link.srcOut.empty() ? tnt::empty<std::string> : link.srcOut,
+            "in"_p       = link.destIn.empty() ? tnt::empty<std::string> : link.destIn
+        );
+        // clang-format on
 
-        if (srcOut.empty()) {
-            st = st.setNull("out");
-        } else {
-            st = st.set("out", srcOut);
-        }
-
-        if (destIn.empty()) {
-            st = st.setNull("in");
-        } else {
-            st = st.set("in", destIn);
-        }
-
-        uint affected_rows =
-            st.set("src", assetElementSrcId).set("dest", assetElementDestId).set("linktype", linkTypeId).execute();
-
-        int64_t rowid = conn.lastInsertId();
-        log_debug("[t_bios_asset_link]: was inserted %" PRIu64 " rows", affected_rows);
-        return rowid;
+        return conn.lastInsertId();
     } catch (const std::exception& e) {
-        return unexpected(e.what());
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), link.src));
     }
 }
 
+// =====================================================================================================================
 
-Expected<uint16_t> insertIntoMonitorDevice(
-    tntdb::Connection& conn, uint16_t deviceTypeId, const std::string& deviceName)
+Expected<uint16_t> insertIntoMonitorDevice(tnt::Connection& conn, uint16_t deviceTypeId, const std::string& deviceName)
 {
-    try {
-        tntdb::Statement st = conn.prepareCached(
-            " INSERT INTO"
-            "   t_bios_discovered_device (name, id_device_type)"
-            " VALUES (:name, :iddevicetype)"
-            " ON DUPLICATE KEY"
-            "   UPDATE"
-            "       id_discovered_device = LAST_INSERT_ID(id_discovered_device)");
+    static const std::string sql = R"(
+        INSERT INTO t_bios_discovered_device
+            (name, id_device_type)
+        VALUES
+            (:name, :deviceTypeId)
+        ON DUPLICATE KEY
+        UPDATE
+            id_discovered_device = LAST_INSERT_ID(id_discovered_device)
+    )";
 
-        // Insert one row or nothing
-        uint affected_rows = st.set("name", deviceName).set("iddevicetype", deviceTypeId).execute();
-        log_debug("[t_bios_discovered_device]: was inserted %" PRIu64 " rows", affected_rows);
+    try {
+        conn.execute(sql, "name"_p = deviceName, "deviceTypeId"_p = deviceTypeId);
         return uint16_t(conn.lastInsertId());
     } catch (const std::exception& e) {
-        return unexpected(e.what());
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), deviceTypeId));
     }
 }
 
-// TODO: inserted data are probably unused, check and remove
-Expected<int64_t> insertIntoMonitorAssetRelation(tntdb::Connection& conn, uint16_t monitorId, uint32_t elementId)
+// =====================================================================================================================
+
+Expected<int64_t> insertIntoMonitorAssetRelation(tnt::Connection& conn, uint16_t monitorId, uint32_t elementId)
 {
     if (elementId == 0) {
-        auto msg = "0 value of element_id is not allowed"_tr;
-        log_error("end: %s, %s", "ignore insert", msg.toString().c_str());
+        auto msg = "0 value of elementId is not allowed"_tr;
+        logError("ignore insert, {}", "ignore insert", msg);
         return unexpected(msg);
     }
 
     if (monitorId == 0) {
-        auto msg = "0 value of monitor_id is not allowed"_tr;
-        log_error("end: %s, %s", "ignore insert", msg.toString().c_str());
+        auto msg = "0 value of monitorId is not allowed"_tr;
+        logError("ignore insert, {}", "ignore insert", msg);
         return unexpected(msg);
     }
 
-    log_debug("input parameters are correct");
+    static const std::string sql = R"(
+        INSERT INTO t_bios_monitor_asset_relation
+            (id_discovered_device, id_asset_element)
+        VALUES
+            (:monitor, :asset)
+    )";
 
     try {
-        tntdb::Statement st = conn.prepareCached(
-            " INSERT INTO"
-            "   t_bios_monitor_asset_relation"
-            "   (id_discovered_device, id_asset_element)"
-            " VALUES"
-            "   (:monitor, :asset)");
-
-        uint affected_rows = st.set("monitor", monitorId).set("asset", elementId).execute();
-        log_debug("[t_bios_monitor_asset_relation]: was inserted %" PRIu64 " rows", affected_rows);
-
+        // clang-format off
+        conn.execute(sql,
+            "monitor"_p = monitorId,
+            "asset"_p   = elementId
+        );
+        // clang-format on
         return conn.lastInsertId();
     } catch (const std::exception& e) {
-        return unexpected(e.what());
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), monitorId));
     }
 }
 
-Expected<uint16_t> selectMonitorDeviceTypeId(tntdb::Connection& conn, const std::string& deviceTypeName)
+// =====================================================================================================================
+
+Expected<uint16_t> selectMonitorDeviceTypeId(tnt::Connection& conn, const std::string& deviceTypeName)
 {
+    static const std::string sql = R"(
+        SELECT
+            v.id
+        FROM
+            v_bios_device_type v
+        WHERE
+            v.name = :name
+    )";
+
     try {
-        tntdb::Statement st = conn.prepareCached(
-            " SELECT"
-            "   v.id"
-            " FROM"
-            "   v_bios_device_type v"
-            " WHERE v.name = :name");
-
-        tntdb::Value val = st.set("name", deviceTypeName).selectValue();
-        log_debug("[t_bios_monitor_device]: was selected 1 rows");
-
-        return uint16_t(val.getUnsigned32());
-    } catch (const tntdb::NotFound& e) {
-        log_info("end: discovered device type was not found with '%s'", e.what());
-        return unexpected("not found");
+        auto res = conn.selectRow(sql, "name"_p = deviceTypeName);
+        return res.get<uint16_t>("id");
+    } catch (const tntdb::NotFound&) {
+        return unexpected(error(Errors::ElementNotFound).format(deviceTypeName));
     } catch (const std::exception& e) {
-        return unexpected(e.what());
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), deviceTypeName));
     }
 }
 
-Expected<void> selectAssetElementSuperParent(
-    tntdb::Connection& conn, uint32_t id, std::function<void(const tntdb::Row&)>& cb)
+// =====================================================================================================================
+
+Expected<void> selectAssetElementSuperParent(uint32_t id, SelectCallback&& cb)
 {
+    static const std::string sql = R"(
+        SELECT
+            v.id_asset_element as id,
+            v.id_parent1 as id_parent1,
+            v.id_parent2 as id_parent2,
+            v.id_parent3 as id_parent3,
+            v.id_parent4 as id_parent4,
+            v.id_parent5 as id_parent5,
+            v.id_parent6 as id_parent6,
+            v.id_parent7 as id_parent7,
+            v.id_parent8 as id_parent8,
+            v.id_parent9 as id_parent9,
+            v.id_parent10 as id_parent10,
+            v.name_parent1 as parent_name1,
+            v.name_parent2 as parent_name2,
+            v.name_parent3 as parent_name3,
+            v.name_parent4 as parent_name4,
+            v.name_parent5 as parent_name5,
+            v.name_parent6 as parent_name6,
+            v.name_parent7 as parent_name7,
+            v.name_parent8 as parent_name8,
+            v.name_parent9 as parent_name9,
+            v.name_parent10 as parent_name10,
+            v.id_type_parent1 as id_type_parent1,
+            v.id_type_parent2 as id_type_parent2,
+            v.id_type_parent3 as id_type_parent3,
+            v.id_type_parent4 as id_type_parent4,
+            v.id_type_parent5 as id_type_parent5,
+            v.id_type_parent6 as id_type_parent6,
+            v.id_type_parent7 as id_type_parent7,
+            v.id_type_parent8 as id_type_parent8,
+            v.id_type_parent9 as id_type_parent9,
+            v.id_type_parent10 as id_type_parent10,
+            v.id_subtype_parent1 as id_subtype_parent1,
+            v.id_subtype_parent2 as id_subtype_parent2,
+            v.id_subtype_parent3 as id_subtype_parent3,
+            v.id_subtype_parent4 as id_subtype_parent4,
+            v.id_subtype_parent5 as id_subtype_parent5,
+            v.id_subtype_parent6 as id_subtype_parent6,
+            v.id_subtype_parent7 as id_subtype_parent7,
+            v.id_subtype_parent8 as id_subtype_parent8,
+            v.id_subtype_parent9 as id_subtype_parent9,
+            v.id_subtype_parent10 as id_subtype_parent10,
+            v.name as name,
+            v.type_name as type_name,
+            v.id_asset_device_type as device_type,
+            v.status as status,
+            v.asset_tag as asset_tag,
+            v.priority as priority,
+            v.id_type as id_type
+        FROM
+            v_bios_asset_element_super_parent AS v
+        WHERE
+            v.id_asset_element = :id
+    )";
+
     try {
-        tntdb::Statement st = conn.prepareCached(
-            " SELECT "
-            "   v.id_asset_element as id, "
-            "   v.id_parent1 as id_parent1, "
-            "   v.id_parent2 as id_parent2, "
-            "   v.id_parent3 as id_parent3, "
-            "   v.id_parent4 as id_parent4, "
-            "   v.id_parent5 as id_parent5, "
-            "   v.id_parent6 as id_parent6, "
-            "   v.id_parent7 as id_parent7, "
-            "   v.id_parent8 as id_parent8, "
-            "   v.id_parent9 as id_parent9, "
-            "   v.id_parent10 as id_parent10, "
-            "   v.name_parent1 as parent_name1, "
-            "   v.name_parent2 as parent_name2, "
-            "   v.name_parent3 as parent_name3, "
-            "   v.name_parent4 as parent_name4, "
-            "   v.name_parent5 as parent_name5, "
-            "   v.name_parent6 as parent_name6, "
-            "   v.name_parent7 as parent_name7, "
-            "   v.name_parent8 as parent_name8, "
-            "   v.name_parent9 as parent_name9, "
-            "   v.name_parent10 as parent_name10, "
-            "   v.id_type_parent1 as id_type_parent1, "
-            "   v.id_type_parent2 as id_type_parent2, "
-            "   v.id_type_parent3 as id_type_parent3, "
-            "   v.id_type_parent4 as id_type_parent4, "
-            "   v.id_type_parent5 as id_type_parent5, "
-            "   v.id_type_parent6 as id_type_parent6, "
-            "   v.id_type_parent7 as id_type_parent7, "
-            "   v.id_type_parent8 as id_type_parent8, "
-            "   v.id_type_parent9 as id_type_parent9, "
-            "   v.id_type_parent10 as id_type_parent10, "
-            "   v.id_subtype_parent1 as id_subtype_parent1, "
-            "   v.id_subtype_parent2 as id_subtype_parent2, "
-            "   v.id_subtype_parent3 as id_subtype_parent3, "
-            "   v.id_subtype_parent4 as id_subtype_parent4, "
-            "   v.id_subtype_parent5 as id_subtype_parent5, "
-            "   v.id_subtype_parent6 as id_subtype_parent6, "
-            "   v.id_subtype_parent7 as id_subtype_parent7, "
-            "   v.id_subtype_parent8 as id_subtype_parent8, "
-            "   v.id_subtype_parent9 as id_subtype_parent9, "
-            "   v.id_subtype_parent10 as id_subtype_parent10, "
-            "   v.name as name, "
-            "   v.type_name as type_name, "
-            "   v.id_asset_device_type as device_type, "
-            "   v.status as status, "
-            "   v.asset_tag as asset_tag, "
-            "   v.priority as priority, "
-            "   v.id_type as id_type "
-            " FROM v_bios_asset_element_super_parent AS v "
-            " WHERE "
-            "   v.id_asset_element = :id ");
-
-        tntdb::Result res = st.set("id", id).select();
-
-        for (const auto& r : res) {
-            cb(r);
-        }
-        return {};
-    } catch (const std::exception& e) {
-        return unexpected(e.what());
-    }
-}
-
-Expected<void> selectAssetsByContainer(tntdb::Connection& conn, uint32_t elementId, std::vector<uint16_t> types,
-    std::vector<uint16_t> subtypes, const std::string& without, const std::string& status,
-    std::function<void(const tntdb::Row&)>&& cb)
-{
-    try {
-        std::string select =
-            " SELECT "
-            "   v.name, "
-            "   v.id_asset_element as asset_id, "
-            "   v.id_asset_device_type as subtype_id, "
-            "   v.type_name as subtype_name, "
-            "   v.id_type as type_id "
-            " FROM "
-            "   v_bios_asset_element_super_parent AS v"
-            " WHERE "
-            "   :containerid in (v.id_parent1, v.id_parent2, v.id_parent3, "
-            "                    v.id_parent4, v.id_parent5, v.id_parent6, "
-            "                    v.id_parent7, v.id_parent8, v.id_parent9, "
-            "                    v.id_parent10)";
-
-        if (!subtypes.empty()) {
-            std::string list = implode(subtypes, ", ", [](const auto& it) {
-                return std::to_string(it);
-            });
-            select += " AND v.id_asset_device_type in (" + list + ")";
-        }
-
-        if (!types.empty()) {
-            std::string list = implode(types, ", ", [](const auto& it) {
-                return std::to_string(it);
-            });
-            select += " AND v.id_type in (" + list + ")";
-        }
-
-        if (!status.empty()) {
-            select += " AND v.status = \"" + status + "\"";
-        }
-
-        std::string endSelect = "";
-        if (!without.empty()) {
-            if (without == "location") {
-                select += " AND v.id_parent1 is NULL ";
-            } else if (without == "powerchain") {
-                endSelect +=
-                    " AND NOT EXISTS "
-                    " (SELECT id_asset_device_dest "
-                    "  FROM t_bios_asset_link_type as l JOIN t_bios_asset_link as a"
-                    "  ON a.id_asset_link_type=l.id_asset_link_type "
-                    "  WHERE "
-                    "     name=\"power chain\" "
-                    "     AND v.id_asset_element=a.id_asset_device_dest)";
-            } else {
-                endSelect +=
-                    " AND NOT EXISTS "
-                    " (SELECT a.id_asset_element "
-                    "  FROM "
-                    "     t_bios_asset_ext_attributes as a "
-                    "  WHERE "
-                    "     a.keytag=\"" +
-                    without +
-                    "\""
-                    "     AND v.id_asset_element = a.id_asset_element)";
-            }
-        }
-
-        select += endSelect;
-
-        // Can return more than one row.
-        tntdb::Statement st = conn.prepareCached(select);
-
-        tntdb::Result result = st.set("containerid", elementId).select();
-        log_debug("[v_bios_asset_element_super_parent]: were selected %" PRIu32 " rows", result.size());
-        for (auto& row : result) {
+        tnt::Connection conn;
+        for (const auto& row : conn.select(sql, "id"_p = id)) {
             cb(row);
         }
         return {};
     } catch (const std::exception& e) {
-        return unexpected(e.what());
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), id));
     }
 }
 
-Expected<std::map<std::string, int>> getDictionary(const std::string& stStr)
+// =====================================================================================================================
+
+Expected<void> selectAssetsByContainer(tnt::Connection& conn, uint32_t elementId, std::vector<uint16_t> types,
+    std::vector<uint16_t> subtypes, const std::string& without, const std::string& status, SelectCallback&& cb)
+{
+    std::string select = R"(
+        SELECT
+            v.name,
+            v.id_asset_element     as asset_id,
+            v.id_asset_device_type as subtype_id,
+            v.type_name            as subtype_name,
+            v.id_type              as type_id
+        FROM
+            v_bios_asset_element_super_parent AS v
+        WHERE
+            :containerid in (
+                v.id_parent1, v.id_parent2, v.id_parent3,
+                v.id_parent4, v.id_parent5, v.id_parent6,
+                v.id_parent7, v.id_parent8, v.id_parent9,
+                v.id_parent10
+            )
+    )";
+
+    if (!subtypes.empty()) {
+        std::string list = implode(subtypes, ", ", [](const auto& it) {
+            return std::to_string(it);
+        });
+        select += " AND v.id_asset_device_type in (" + list + ")";
+    }
+
+    if (!types.empty()) {
+        std::string list = implode(types, ", ", [](const auto& it) {
+            return std::to_string(it);
+        });
+        select += " AND v.id_type in (" + list + ")";
+    }
+
+    if (!status.empty()) {
+        select += " AND v.status = \"" + status + "\"";
+    }
+
+    if (!without.empty()) {
+        if (without == "location") {
+            select += " AND v.id_parent1 is NULL ";
+        } else if (without == "powerchain") {
+            select += R"(
+                AND NOT EXISTS
+                (
+                    SELECT
+                        id_asset_device_dest
+                    FROM
+                        t_bios_asset_link_type as l
+                    JOIN t_bios_asset_link as a
+                        ON a.id_asset_link_type=l.id_asset_link_type
+                    WHERE
+                        name="power chain" AND
+                        v.id_asset_element=a.id_asset_device_dest
+                )
+            )";
+        } else {
+            select += R"(
+                AND NOT EXISTS
+                (
+                    SELECT a.id_asset_element
+                    FROM
+                        t_bios_asset_ext_attributes as a
+                    WHERE
+                        a.keytag=")" +
+                      without + R"(" AND v.id_asset_element = a.id_asset_element
+                )
+            )";
+        }
+    }
+
+    try {
+        for (const auto& row : conn.select(select, "containerid"_p = elementId)) {
+            cb(row);
+        }
+        return {};
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
+    }
+}
+
+// =====================================================================================================================
+
+static Expected<std::map<std::string, int>> getDictionary(const std::string& stStr)
 {
     std::map<std::string, int> mymap;
 
     try {
-        tntdb::Connection conn = tntdb::connectCached(DBConn::url);
-        tntdb::Statement  st   = conn.prepare(stStr);
-        tntdb::Result     res  = st.select();
-
-        std::string name = "";
-        int         id   = 0;
-        for (auto& row : res) {
-            row[0].get(name);
-            row[1].get(id);
-            mymap.insert(std::pair<std::string, int>(name, id));
+        tnt::Connection db;
+        for (const auto& row : db.select(stStr)) {
+            mymap.emplace(row.get("name"), row.get<int>("id"));
         }
+
         return std::move(mymap);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), stStr));
@@ -933,24 +903,133 @@ Expected<std::map<std::string, int>> getDictionary(const std::string& stStr)
 
 Expected<std::map<std::string, int>> readElementTypes()
 {
-    static std::string st_dictionary_element_type =
-        " SELECT"
-        "   v.name, v.id"
-        " FROM"
-        "   v_bios_asset_element_type v";
+    static const std::string sql = R"(
+        SELECT
+            v.name, v.id
+        FROM
+            v_bios_asset_element_type v
+    )";
 
-    return getDictionary(st_dictionary_element_type);
+    return getDictionary(sql);
 }
 
 Expected<std::map<std::string, int>> readDeviceTypes()
 {
-    static std::string st_dictionary_device_type =
-        " SELECT"
-        "   v.name, v.id"
-        " FROM"
-        "   v_bios_asset_device_type v";
+    static std::string sql = R"(
+        SELECT
+            v.name, v.id
+        FROM
+            v_bios_asset_device_type v
+    )";
 
-    return getDictionary(st_dictionary_device_type);
+    return getDictionary(sql);
 }
+
+// =====================================================================================================================
+
+Expected<std::vector<DbAssetLink>> selectAssetDeviceLinksTo(uint32_t elementId, uint8_t linkTypeId)
+{
+    static const std::string sql = R"(
+        SELECT
+            v.id_asset_element_src, v.src_out, v.dest_in, v.src_name
+        FROM
+            v_web_asset_link v
+        WHERE
+            v.id_asset_element_dest = :iddevice AND
+            v.id_asset_link_type = :idlinktype
+    )";
+
+
+    try {
+        tnt::Connection conn;
+
+        // clang-format off
+        auto rows = conn.select(sql,
+            "iddevice"_p   = elementId,
+            "idlinktype"_p = linkTypeId
+        );
+        // clang-format on
+
+        std::vector<DbAssetLink> ret;
+
+        for (const auto& row : rows) {
+            DbAssetLink link;
+            row.get("id_asset_element_src", link.srcId);
+            row.get("src_out", link.srcSocket);
+            row.get("dest_in", link.destId);
+            row.get("src_name", link.destSocket);
+
+            ret.push_back(link);
+        }
+        return ret;
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<std::map<uint32_t, std::string>> selectShortElements(uint16_t typeId, uint16_t subtypeId)
+{
+    std::string sql = R"(
+        SELECT
+            v.name, v.id
+        FROM
+            v_bios_asset_element v
+        WHERE
+            v.id_type = :typeid
+    )";
+
+    if (subtypeId) {
+        sql += "AND v.id_subtype = :subtypeid";
+    }
+
+    try {
+        tnt::Connection conn;
+        auto            st = conn.prepare(sql);
+        st.bind("typeid"_p = typeId);
+        if (subtypeId) {
+            st.bind("subtypeid"_p = subtypeId);
+        }
+
+        std::map<uint32_t, std::string> item;
+
+        for (auto const& row : st.select()) {
+            item.emplace(row.get<uint32_t>("id"), row.get("name"));
+        }
+
+        return std::move(item);
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), typeId));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<int> countKeytag(const std::string& keytag, const std::string& value)
+{
+    static const std::string sql = R"(
+        SELECT COUNT(*) as count
+        FROM
+            t_bios_asset_ext_attributes
+        WHERE
+            keytag = :keytag AND
+            value = :value
+    )";
+
+    try {
+        tnt::Connection conn;
+        // clang-format off
+        return conn.selectRow(sql,
+            "keytag"_p = keytag,
+            "value"_p  = value
+        ).get<int>("count");
+        // clang-format on
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), keytag));
+    }
+}
+
+// =====================================================================================================================
 
 } // namespace fty::asset::db

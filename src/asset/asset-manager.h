@@ -10,19 +10,6 @@
 
 namespace fty::asset {
 
-struct ErrCode
-{
-    ErrCode(ErrorType _type, ErrorSubtype _subType, const Translate& _msg)
-        : type(_type)
-        , subType(_subType)
-        , msg(_msg)
-    {
-    }
-    ErrorType    type;
-    ErrorSubtype subType;
-    Translate    msg;
-};
-
 class AssetManager
 {
 public:

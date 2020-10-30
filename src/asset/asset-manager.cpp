@@ -1,17 +1,18 @@
 #include "asset-manager.h"
+#include "db.h"
+#include "error.h"
+#include "logger.h"
 #include <fty_common_db.h>
 #include <fty_log.h>
-#include "error.h"
 
 namespace fty::asset {
 
-static std::vector<std::tuple<uint32_t, std::string, std::string, std::string>> s_get_parents(
-    tntdb::Connection& conn, uint32_t id)
+static std::vector<std::tuple<uint32_t, std::string, std::string, std::string>> getParents(uint32_t id)
 {
 
     std::vector<std::tuple<uint32_t, std::string, std::string, std::string>> ret{};
 
-    std::function<void(const tntdb::Row&)> cb = [&ret](const tntdb::Row& row) {
+    auto cb = [&ret](const tnt::Row& row) {
         // Dim: I keep this comment from original code for history :)
 
         // C++ is c r a z y!! Having static initializer in lambda function made
@@ -30,10 +31,10 @@ static std::vector<std::tuple<uint32_t, std::string, std::string, std::string>> 
         };
 
         for (const auto& it : NAMES) {
-            uint32_t    pid        = row[std::get<0>(it)].getUnsigned32();
-            std::string name       = row[std::get<1>(it)].getString();
-            uint16_t    id_type    = uint16_t(row[std::get<2>(it)].getUnsigned());
-            uint16_t    id_subtype = uint16_t(row[std::get<3>(it)].getUnsigned());
+            uint32_t    pid        = row.get<uint32_t>(std::get<0>(it));
+            std::string name       = row.get(std::get<1>(it));
+            uint16_t    id_type    = row.get<uint16_t>(std::get<2>(it));
+            uint16_t    id_subtype = row.get<uint16_t>(std::get<3>(it));
 
             if (!name.empty()) {
                 ret.push_back(std::make_tuple(
@@ -42,19 +43,12 @@ static std::vector<std::tuple<uint32_t, std::string, std::string, std::string>> 
         }
     };
 
-    int r = DBAssets::select_asset_element_super_parent(conn, id, cb);
+    int r = db::selectAssetElementSuperParent(id, cb);
     if (r == -1) {
-        log_error("select_asset_element_super_parent failed");
+        logError("select_asset_element_super_parent failed");
         throw std::runtime_error("DBAssets::select_asset_element_super_parent () failed.");
     }
 
-    return ret;
-}
-
-template <typename T>
-ErrCode createErr(const db_reply<T>& other)
-{
-    ErrCode ret(ErrorType(other.errtype), ErrorSubtype(other.errsubtype), other.msg);
     return ret;
 }
 
@@ -62,94 +56,106 @@ Expected<db::WebAssetElementExt> AssetManager::getItem(uint32_t id)
 {
     db::WebAssetElementExt el;
     try {
-        tntdb::Connection conn = tntdb::connect(DBConn::url);
-        log_debug("connection was successful");
-
         if (auto ret = db::selectAssetElementWebById(id, el); !ret) {
             return unexpected(ret.error());
         }
-        log_debug("1/5 basic select is done");
 
         if (auto ret = db::selectExtAttributes(id)) {
             el.extAttributes = *ret;
         } else {
             return unexpected(ret.error());
         }
-        log_debug("2/5 ext select is done");
 
-        auto group_ret = DBAssets::select_asset_element_groups(conn, id);
-        log_debug("3/5 groups select is done, but next one is only for devices");
-
-        if (group_ret.status == 0) {
-            return unexpected(createErr(group_ret));
+        ;
+        if (auto ret = db::selectAssetElementGroups(id)) {
+            el.groups = *ret;
+        } else {
+            return unexpected(ret.error());
         }
-        log_debug("    3/5 no errors");
-        /*ret.groups = group_ret.item;
 
-        if (ret.basic.type_id == persist::asset_type::DEVICE) {
-            auto powers = DBAssets::select_asset_device_links_to(conn, id, INPUT_POWER_CHAIN);
-            log_debug("4/5 powers select is done");
-
-            if (powers.status == 0) {
-                return unexpected(createErr(powers));
+        if (el.typeId == persist::asset_type::DEVICE) {
+            if (auto powers = db::selectAssetDeviceLinksTo(id, INPUT_POWER_CHAIN)) {
+                el.powers = *powers;
+            } else {
+                return unexpected(powers.error());
             }
-            log_debug("    4/5 no errors");
-            ret.powers = powers.item;
         }
 
-        // parents select
-        log_debug("5/5 parents select");
-        ret.parents = s_get_parents(conn, id);
-        log_debug("     5/5 no errors");
+        el.parents = getParents(id);
 
-        return std::move(ret);*/
-        return el;
+        return std::move(el);
     } catch (const std::exception& e) {
-        return unexpected(ErrCode{DB_ERR, DB_ERROR_INTERNAL, error(Errors::InternalError).format(e.what())});
+        return unexpected(e.what());
     }
 }
 
-Expected<AssetManager::AssetList, ErrCode> AssetManager::getItems(
-    const std::string& typeName, const std::string& subtypeName)
+Expected<AssetManager::AssetList> AssetManager::getItems(const std::string& typeName, const std::string& subtypeName)
 {
-    LOG_START;
-    log_debug("subtypename = '%s', typename = '%s'", subtypeName.c_str(), typeName.c_str());
+    uint16_t subtypeId = 0;
 
-    uint16_t  subtype_id = 0;
-
-    uint16_t type_id = persist::type_to_typeid(typeName);
-    if (type_id == persist::asset_type::TUNKNOWN) {
-        return unexpected(ErrCode{DB_ERR, DB_ERROR_INTERNAL,
-            error(Errors::BadParams).format("type", typeName, "datacenters,rooms,ros,racks,devices")});
+    uint16_t typeId = persist::type_to_typeid(typeName);
+    if (typeId == persist::asset_type::TUNKNOWN) {
+        return unexpected("Expected datacenters,rooms,ros,racks,devices"_tr);
     }
 
     if (typeName == "device" && !subtypeName.empty()) {
-        subtype_id = persist::subtype_to_subtypeid(subtypeName);
-        if (subtype_id == persist::asset_subtype::SUNKNOWN) {
-            return unexpected(ErrCode{DB_ERR, DB_ERROR_INTERNAL,
-                error(Errors::BadParams).format("subtype", subtypeName, "ups, epdu, pdu, genset, sts, server, feed")});
+        subtypeId = persist::subtype_to_subtypeid(subtypeName);
+        if (subtypeId == persist::asset_subtype::SUNKNOWN) {
+            return unexpected("Expected ups, epdu, pdu, genset, sts, server, feed"_tr);
         }
     }
 
-    log_debug("subtypeid = %" PRIi16 " typeid = %" PRIi16, subtype_id, type_id);
-
     try {
-        tntdb::Connection conn = tntdb::connect(DBConn::url);
-        auto els                    = DBAssets::select_short_elements(conn, type_id, subtype_id);
-        if (els.status == 0) {
-            return unexpected(createErr(els));
+        auto els = db::selectShortElements(typeId, subtypeId);
+        if (!els) {
+            return unexpected(els.error());
         }
-        LOG_END;
-        return els.item;
+        return *els;
     } catch (const std::exception& e) {
-        LOG_END_ABNORMAL(e);
-        return unexpected(ErrCode{DB_ERR, DB_ERROR_INTERNAL, error(Errors::InternalError).format(e.what())});
+        return unexpected(e.what());
     }
 }
 
-Expected<db::AssetElement, ErrCode> AssetManager::deleteItem(uint32_t id)
+Expected<db::AssetElement> AssetManager::deleteItem(uint32_t id)
 {
-    return unexpected(ErrCode{DB_ERR, DB_ERROR_INTERNAL, "not-implemented"_tr});
+    auto asset = db::selectAssetElementWebById(id);
+    if (!asset) {
+        return unexpected(asset.error());
+    }
+
+    // disable deleting RC0
+    if (asset->name == "rackcontroller-0") {
+        logDebug("Prevented deleting RC-0");
+        return unexpected("Prevented deleting RC-0");
+    }
+
+    // check if a logical_asset refer to the item we are trying to delete
+    if (db::countKeytag("logical_asset", asset->name) > 0) {
+        logWarn("a logical_asset (sensor) refers to it");
+        return unexpected("a logical_asset (sensor) refers to it"_tr);
+    }
+
+    switch (asset->typeId) {
+        case persist::asset_type::DATACENTER:
+        case persist::asset_type::ROW:
+        case persist::asset_type::ROOM:
+        case persist::asset_type::RACK:
+            return persist::delete_dc_room_row_rack(conn, id);
+        case persist::asset_type::GROUP:
+            return persist::delete_group(conn, id);
+        case persist::asset_type::DEVICE:
+        {
+            if (basic_info.item.status == "active")
+            {
+                //we need device JSON in order to delete active device
+                std::string asset_json = getJsonAsset (NULL, id);
+                return persist::delete_device(conn, id, asset_json);
+            }
+            return persist::delete_device(conn, id);
+        }
+    }
+    logError("unknown type");
+    return unexpected("unknown type"_tr);
 }
 
 } // namespace fty::asset

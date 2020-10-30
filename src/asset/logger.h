@@ -13,7 +13,7 @@
     log(log4cplus::INFO_LOG_LEVEL, __VA_ARGS__)
 
 #define logWarn(...)\
-    logog(log4cplus::WARN_LOG_LEVEL, __VA_ARGS__)
+    log(log4cplus::WARN_LOG_LEVEL, __VA_ARGS__)
 
 #define logFatal(...)\
     log(log4cplus::FATAL_LOG_LEVEL, __VA_ARGS__)

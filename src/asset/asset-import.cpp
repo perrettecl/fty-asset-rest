@@ -2,27 +2,28 @@
 #include "asset-helpers.h"
 #include "asset-licensing.h"
 #include "csv.h"
+#include "db.h"
 #include "json.h"
+#include "logger.h"
 #include <fty/split.h>
 #include <fty_asset_activator.h>
 #include <fty_common_db_dbpath.h>
 #include <fty_log.h>
 #include <regex>
-#include "db.h"
 
 #define AGENT_ASSET_ACTIVATOR "etn-licensing-credits"
 
 namespace fty::asset {
 
-template <typename KT, typename VT>
-std::vector<KT> keys(const std::map<KT, VT>& map)
-{
-    std::vector<KT> keys;
-    transform(begin(map), end(map), back_inserter(keys), [](const auto& pair) {
-        return pair.first;
-    });
-    return keys;
-}
+// template <typename KT, typename VT>
+// std::vector<KT> keys(const std::map<KT, VT>& map)
+//{
+//    std::vector<KT> keys;
+//    transform(begin(map), end(map), back_inserter(keys), [](const auto& pair) {
+//        return pair.first;
+//    });
+//    return keys;
+//}
 
 Import::Import(const CsvMap& cm)
     : m_cm(cm)
@@ -55,7 +56,7 @@ std::string Import::mandatoryMissing() const
 
 std::map<std::string, std::string> Import::sanitizeRowExtNames(size_t row, bool sanitize) const
 {
-    static std::vector<std::string> sanitizeList = {"location", "logical_asset", "power_source.", "group."};
+    static std::vector<std::string>    sanitizeList = {"location", "logical_asset", "power_source.", "group."};
     std::map<std::string, std::string> result;
     // make copy of this one line
     for (auto title : m_cm.getTitles()) {
@@ -76,9 +77,9 @@ std::map<std::string, std::string> Import::sanitizeRowExtNames(size_t row, bool 
 
                     auto name = db::extNameToAssetName(it->second);
                     if (!name) {
-                        log_error(name.error().c_str());
+                        logError(name.error());
                     } else {
-                        log_debug("sanitized %s '%s' -> '%s'", title.c_str(), it->second.c_str(), (*name).c_str());
+                        logDebug("sanitized {} '{}' -> '{}'", title, it->second, *name);
                         result[title] = name;
                     }
                 }
@@ -88,9 +89,9 @@ std::map<std::string, std::string> Import::sanitizeRowExtNames(size_t row, bool 
                 if (it != result.end()) {
                     auto name = db::extNameToAssetName(it->second);
                     if (!name) {
-                        log_error(name.error().c_str());
+                        logError(name.error());
                     } else {
-                        log_debug("sanitized %s '%s' -> '%s'", it->first.c_str(), it->second.c_str(), (*name).c_str());
+                        logDebug("sanitized {} '{}' -> '{}'", it->first, it->second, *name);
                         result[item] = name;
                     }
                 }
@@ -152,17 +153,8 @@ AssetExpected<void> Import::process()
 {
     auto m = mandatoryMissing();
     if (m != "") {
-        log_error("column '%s' is missing, import is aborted", m.c_str());
+        logError("column '{}' is missing, import is aborted", m);
         return unexpected(error(Errors::ParamRequired).format(m));
-    }
-
-    tntdb::Connection conn;
-    try {
-        conn = tntdb::connectCached(DBConn::url);
-    } catch (...) {
-        std::string msg = "No connection to database"_tr;
-        log_error("%s", msg.c_str());
-        return unexpected(error(Errors::InternalError).format(msg));
     }
 
     if (auto limitations = getLicensingLimitation(); !limitations) {
@@ -179,7 +171,7 @@ AssetExpected<void> Import::processRow(
 {
     LOG_START;
 
-    log_debug("################ Row number is %zu", row);
+    logDebug("################ Row number is {}", row);
     static const std::set<std::string> statuses = {"active", "nonactive", "spare", "retired"};
 
     if (!limitations.global_configurability) {
@@ -210,10 +202,10 @@ AssetExpected<void> Import::processRow(
     {
         std::string iname = unusedColumns.count("id") ? m_cm.get(1, "id") : "noid";
         if ("rackcontroller-0" == iname) {
-            log_debug("RC-0 detected");
+            logDebug("RC-0 detected");
             rc0 = 1;
         } else {
-            log_debug("RC-0 not detected");
+            logDebug("RC-0 not detected");
             rc0 = -1;
         }
     }
@@ -225,20 +217,20 @@ AssetExpected<void> Import::processRow(
 
     // because id is definitely not an external attribute
     auto idStr = unusedColumns.count("id") ? m_cm.get(row, "id") : "";
-    log_debug("id_str = %s, rc_0 = %d", idStr.c_str(), rc0);
+    logDebug("id_str = {}, rc_0 = {}", idStr, rc0);
 
     if (rc0 != int(row) && "rackcontroller-0" == idStr && rc0 != -1) {
         // we got RC-0 but it don't match "myself", change it to something else ("")
-        log_debug("RC is marked as rackcontroller-0, but it's not myself");
+        logDebug("RC is marked as rackcontroller-0, but it's not myself");
         idStr = "";
     } else if (rc0 == int(row) && idStr != "rackcontroller-0") {
-        log_debug("RC is identified as rackcontroller-0");
+        logDebug("RC is identified as rackcontroller-0");
         idStr = "rackcontroller-0";
     }
 
     unusedColumns.erase("id");
     m_operation = persist::asset_operation::INSERT;
-    uint32_t                 id        = 0;
+    uint32_t id = 0;
 
     if (!idStr.empty()) {
         if (auto tmp = db::nameToAssetId(idStr)) {
@@ -271,17 +263,19 @@ AssetExpected<void> Import::processRow(
                     .format("name", "already existing name"_tr, "unique string from 1 to 50 characters"_tr));
         }
     }
-    log_debug("name = '%s/%s'", ename.c_str(), (*name).c_str());
     if (!name) {
         return unexpected(name.error());
     }
+    logDebug("name = '{}/{}'", ename, *name);
     unusedColumns.erase("name");
 
     auto type = m_cm.get_strip(row, "type");
-    log_debug("type = '%s'", type.c_str());
+    logDebug("type = '{}'", type);
     if ((*types).find(type) == (*types).end()) {
         std::string received = type.empty() ? "empty value"_tr.toString() : type;
-        std::string expected = "[" + implode(keys(*types), ", ") + "]";
+        std::string expected = "[" + implode(*types, ", ", [](const auto& pair) {
+            return pair.first;
+        }) + "]";
         return unexpected(error(Errors::BadParams).format("type", received, expected));
     }
 
@@ -289,7 +283,7 @@ AssetExpected<void> Import::processRow(
     unusedColumns.erase("type");
 
     auto status = m_cm.get_strip(row, "status");
-    log_debug("status = '%s'", status.c_str());
+    logDebug("status = '{}'", status);
     if (statuses.find(status) == statuses.end()) {
         std::string received = status.empty() ? "empty value"_tr.toString() : status;
         std::string expected = "[" + implode(statuses, ", ") + "]";
@@ -298,7 +292,7 @@ AssetExpected<void> Import::processRow(
     unusedColumns.erase("status");
 
     auto assetTag = unusedColumns.count("asset_tag") ? m_cm.get(row, "asset_tag") : "";
-    log_debug("asset_tag = '%s'", assetTag.c_str());
+    logDebug("asset_tag = '{}'", assetTag);
     if (assetTag.length() > 50) {
         std::string received = "too long string"_tr;
         std::string expected = "unique string from 1 to 50 characters"_tr;
@@ -307,11 +301,11 @@ AssetExpected<void> Import::processRow(
     unusedColumns.erase("asset_tag");
 
     uint16_t priority = getPriority(m_cm.get_strip(row, "priority"));
-    log_debug("priority = %d", priority);
+    logDebug("priority = {}", priority);
     unusedColumns.erase("priority");
 
     auto location = sanitizedAssetNames["location"];
-    log_debug("location = '%s'", location.c_str());
+    logDebug("location = '{}'", location);
     uint32_t parentId = 0;
     if (!location.empty()) {
         auto ret = db::selectAssetElementByName(location);
@@ -324,7 +318,7 @@ AssetExpected<void> Import::processRow(
     unusedColumns.erase("location");
 
     // Business requirement: be able to write 'rack controller', 'RC', 'rc' as subtype == 'rack controller'
-    std::map<std::string, int> localSubtypes     = *subtypes;
+    std::map<std::string, int> localSubtypes    = *subtypes;
     int                        rackControllerId = subtypes->find("rack controller")->second;
     int                        patchPanelId     = subtypes->find("patch panel")->second;
 
@@ -338,15 +332,17 @@ AssetExpected<void> Import::processRow(
 
     auto subtype = m_cm.get_strip(row, "sub_type");
 
-    log_debug("subtype = '%s'", subtype.c_str());
+    logDebug("subtype = '{}'", subtype);
     if ((type == "device") && (localSubtypes.find(subtype) == localSubtypes.cend())) {
         std::string received = subtype.empty() ? "empty value"_tr.toString() : subtype;
-        std::string expected = "[" + implode(keys(*subtypes), ", ") + "]";
+        std::string expected = "[" + implode(*subtypes, ", ", [](const auto& pair) {
+            return pair.first;
+        }) + "]";
         return unexpected(error(Errors::BadParams).format("subtype", received, expected));
     }
 
     if ((!subtype.empty()) && (type != "device") && (type != "group")) {
-        log_warning("'%s' - subtype is ignored", subtype.c_str());
+        logWarn("'{}' - subtype is ignored", subtype);
     }
 
     if ((subtype.empty()) && (type == "group")) {
@@ -390,7 +386,7 @@ AssetExpected<void> Import::processRow(
             // if column doesn't exist, then break the cycle
             break;
         }
-        log_debug("group_name = '%s'", group.c_str());
+        logDebug("group_name = '{}'", group);
         // if group was not specified, just skip it
         if (!group.empty()) {
             // find an id from DB
@@ -420,8 +416,8 @@ AssetExpected<void> Import::processRow(
 
         // prevent power source being myself
         if (linkSource == ename) {
-            log_debug("Ignoring power source=myself");
-            linkSource         = "";
+            logDebug("Ignoring power source=myself");
+            linkSource        = "";
             auto linkColName1 = "power_plug_src." + std::to_string(linkIndex);
             auto linkColName2 = "power_input." + std::to_string(linkIndex);
             if (!linkColName1.empty()) {
@@ -433,7 +429,7 @@ AssetExpected<void> Import::processRow(
             continue;
         }
 
-        log_debug("power_source_name = '%s'", linkSource.c_str());
+        logDebug("power_source_name = '{}'", linkSource);
         if (!linkSource.empty()) // if power source is not specified
         {
             // find an id from DB
@@ -453,29 +449,28 @@ AssetExpected<void> Import::processRow(
             auto linkSource1 = m_cm.get(row, linkColName1);
             oneLink.srcOut   = linkSource1.substr(0, 4);
         } catch (const std::out_of_range& e) {
-            log_debug("'%s' - is missing at all", linkColName1.c_str());
-            log_debug("%s", e.what());
+            logDebug("'{}' - is missing at all", linkColName1);
+            logDebug(e.what());
         }
 
         // column name
         auto linkColName2 = "power_input." + std::to_string(linkIndex);
         try {
-            unusedColumns.erase(linkColName2);                 // remove from unused
+            unusedColumns.erase(linkColName2);              // remove from unused
             auto linkSource2 = m_cm.get(row, linkColName2); // take value
             oneLink.destIn   = linkSource2.substr(0, 4);
         } catch (const std::out_of_range& e) {
-            log_debug("'%s' - is missing at all", linkColName2.c_str());
-            log_debug("%s", e.what());
+            logDebug("'{}' - is missing at all", linkColName2);
+            logDebug(e.what());
         }
 
-        if (oneLink.src != 0)
-        {
+        if (oneLink.src != 0) {
             // if first column was ok
             if (type == "device") {
                 oneLink.type = 1; // TODO remove hardcoded constant
                 links.push_back(oneLink);
             } else {
-                log_warning("information about power sources is ignored for type '%s'", type.c_str());
+                logWarn("information about power sources is ignored for type '%s'", type);
             }
         }
     }
@@ -534,7 +529,7 @@ AssetExpected<void> Import::processRow(
             if (auto date = sanitizeDate(value)) {
                 value = *date;
             } else {
-                log_info("Cannot sanitize %s '%s' for device '%s'", key.c_str(), value.c_str(), ename.c_str());
+                logInfo("Cannot sanitize {} '{}' for device '{}'", key, value, ename);
                 return unexpected(error(Errors::BadParams).format(key, value, "ISO date"_tr));
             }
         }
@@ -556,7 +551,7 @@ AssetExpected<void> Import::processRow(
             if (auto ret = sanitizeValueDouble(key, value); !ret) {
                 return unexpected(ret.error());
             } else if (*ret < 0) {
-                log_info("Extattribute: %s='%s' is neither positive not zero", key.c_str(), value.c_str());
+                logInfo("Extattribute: {}='{}' is neither positive not zero", key, value);
                 std::string expected = "value must be a not negative number"_tr;
                 return unexpected(error(Errors::BadParams).format(key, value, expected));
             }
@@ -568,12 +563,12 @@ AssetExpected<void> Import::processRow(
                 std::size_t pos = 0;
                 ul              = std::stoul(value, &pos);
                 if (pos != value.length()) {
-                    log_info("Extattribute: %s='%s' is not unsigned integer", key.c_str(), value.c_str());
+                    logInfo("Extattribute: {}='{}' is not unsigned integer", key, value);
                     std::string expected = "value must be an unsigned integer"_tr;
                     return unexpected(error(Errors::BadParams).format(key, value, expected));
                 }
-            } catch (const std::exception& e) {
-                log_info("Extattribute: %s='%s' is not unsigned integer", key.c_str(), value.c_str());
+            } catch (const std::exception&) {
+                logInfo("Extattribute: {}='{}' is not unsigned integer", key, value);
                 std::string expected = "value must be an unsigned integer"_tr;
                 return unexpected(error(Errors::BadParams).format(key, value, expected));
             }
@@ -589,12 +584,12 @@ AssetExpected<void> Import::processRow(
                 std::size_t pos = 0;
                 ul              = std::stoul(value, &pos);
                 if (pos != value.length()) {
-                    log_info("Extattribute: %s='%s' is not unsigned integer", key.c_str(), value.c_str());
+                    logInfo("Extattribute: {}='{}' is not unsigned integer", key, value);
                     std::string expected = "value must be an unsigned integer"_tr;
                     return unexpected(error(Errors::BadParams).format(key, value, expected));
                 }
-            } catch (const std::exception& e) {
-                log_info("Extattribute: %s='%s' is not unsigned integer", key.c_str(), value.c_str());
+            } catch (const std::exception&) {
+                logInfo("Extattribute: {}='{}' is not unsigned integer", key, value);
                 std::string expected = "value must be an unsigned integer"_tr;
                 return unexpected(error(Errors::BadParams).format("u_size", value, expected));
             }
@@ -618,7 +613,7 @@ AssetExpected<void> Import::processRow(
         extattributes["type"] = subtype;
     }
 
-    tntdb::Connection conn = tntdb::connectCached(DBConn::url);
+    tnt::Connection conn;
 
     if (!idStr.empty()) {
         std::map<std::string, std::string> extattributesRO;
@@ -632,10 +627,10 @@ AssetExpected<void> Import::processRow(
 
         std::string errmsg = "";
         if (type != "device") {
-            tntdb::Transaction trans(conn);
+            tnt::Transaction trans(conn);
 
-            auto ret = updateDcRoomRowRackGroup(conn, m_el.id, *name, parentId, extattributes, status,
-                priority, groups, assetTag, extattributesRO);
+            auto ret = updateDcRoomRowRackGroup(
+                conn, m_el.id, *name, parentId, extattributes, status, priority, groups, assetTag, extattributesRO);
 
             if (!ret) {
                 trans.rollback();
@@ -645,10 +640,10 @@ AssetExpected<void> Import::processRow(
             }
         } else {
             if (idStr != "rackcontroller-0") {
-                tntdb::Transaction trans(conn);
+                tnt::Transaction trans(conn);
 
-                auto ret = updateDevice(conn, m_el.id, *name, parentId, extattributes, "nonactive", priority,
-                    groups, links, assetTag, extattributesRO);
+                auto ret = updateDevice(conn, m_el.id, *name, parentId, extattributes, "nonactive", priority, groups,
+                    links, assetTag, extattributesRO);
 
                 if (!ret) {
                     trans.rollback();
@@ -670,10 +665,10 @@ AssetExpected<void> Import::processRow(
                     }
                 }
             } else {
-                tntdb::Transaction trans(conn);
+                tnt::Transaction trans(conn);
 
-                auto ret = updateDevice(conn, m_el.id, *name, parentId, extattributes, status, priority,
-                    groups, links, assetTag, extattributesRO);
+                auto ret = updateDevice(conn, m_el.id, *name, parentId, extattributes, status, priority, groups, links,
+                    assetTag, extattributesRO);
 
                 if (!ret) {
                     trans.rollback();
@@ -695,10 +690,10 @@ AssetExpected<void> Import::processRow(
         }
 
         if (type != "device") {
-            tntdb::Transaction trans(conn);
+            tnt::Transaction trans(conn);
             // this is a transaction
-            auto ret = insertDcRoomRowRackGroup(conn, ename, typeId, parentId, extattributes, status,
-                priority, groups, assetTag, extattributesRO);
+            auto ret = insertDcRoomRowRackGroup(
+                conn, ename, typeId, parentId, extattributes, status, priority, groups, assetTag, extattributesRO);
 
             if (!ret) {
                 trans.rollback();
@@ -709,10 +704,10 @@ AssetExpected<void> Import::processRow(
             }
         } else {
             if (subtypeId != rackControllerId) {
-                tntdb::Transaction trans(conn);
+                tnt::Transaction trans(conn);
 
-                auto ret = insertDevice(conn, links, groups, ename, parentId, extattributes, subtypeId,
-                    "nonactive", priority, assetTag, extattributesRO);
+                auto ret = insertDevice(conn, links, groups, ename, parentId, extattributes, subtypeId, "nonactive",
+                    priority, assetTag, extattributesRO);
 
                 if (!ret) {
                     trans.rollback();
@@ -734,9 +729,9 @@ AssetExpected<void> Import::processRow(
                 }
             } else {
                 // this is a transaction
-                tntdb::Transaction trans(conn);
-                auto ret = insertDevice(conn, links, groups, ename, parentId, extattributes, subtypeId,
-                    status, priority, assetTag, extattributesRO);
+                tnt::Transaction trans(conn);
+                auto ret = insertDevice(conn, links, groups, ename, parentId, extattributes, subtypeId, status,
+                    priority, assetTag, extattributesRO);
 
                 if (!ret) {
                     trans.rollback();
@@ -770,14 +765,14 @@ AssetExpected<void> Import::processRow(
     return {};
 }
 
-AssetExpected<void> Import::updateDcRoomRowRackGroup(tntdb::Connection& conn, uint32_t elementId,
+AssetExpected<void> Import::updateDcRoomRowRackGroup(tnt::Connection& conn, uint32_t elementId,
     const std::string& elementName, uint32_t parentId, const std::map<std::string, std::string>& extattributes,
     const std::string& status, uint16_t priority, const std::set<uint32_t>& groups, const std::string& assetTag,
     const std::map<std::string, std::string>& extattributesRO) const
 {
     if (status == "nonactive") {
         auto msg = "{}: Element cannot be inactivated. Change status to 'active'."_tr.format(elementName);
-        log_error("%s", msg.toString().c_str());
+        logError(msg.toString());
         return unexpected(msg);
     }
 
@@ -787,7 +782,7 @@ AssetExpected<void> Import::updateDcRoomRowRackGroup(tntdb::Connection& conn, ui
 
         if (!ret || *ret != 1) {
             auto errmsg = "check  element name, location, status, priority, asset_tag"_tr;
-            log_error("%s, %s", ret.error().c_str(), errmsg.toString().c_str());
+            logError("{}, {}", ret.error(), errmsg);
             return unexpected(errmsg);
         }
     }
@@ -796,7 +791,7 @@ AssetExpected<void> Import::updateDcRoomRowRackGroup(tntdb::Connection& conn, ui
         auto ret = db::deleteAssetExtAttributesWithRo(conn, elementId, false);
         if (!ret) {
             auto errmsg = "cannot erase old external attributes"_tr;
-            log_error("%s: %s", ret.error().c_str(), errmsg.toString().c_str());
+            logError("{}: {}", ret.error(), errmsg);
             return unexpected(errmsg);
         }
     }
@@ -804,7 +799,7 @@ AssetExpected<void> Import::updateDcRoomRowRackGroup(tntdb::Connection& conn, ui
     {
         auto ret = db::insertIntoAssetExtAttributes(conn, elementId, extattributes, false);
         if (!ret) {
-            log_error("%s", ret.error().c_str());
+            logError(ret.error());
             return unexpected(ret.error());
         }
     }
@@ -812,7 +807,7 @@ AssetExpected<void> Import::updateDcRoomRowRackGroup(tntdb::Connection& conn, ui
     if (!extattributesRO.empty()) {
         auto ret = db::insertIntoAssetExtAttributes(conn, elementId, extattributesRO, false);
         if (!ret) {
-            log_error("%s", ret.error().c_str());
+            logError(ret.error());
             return unexpected(ret.error());
         }
     }
@@ -820,7 +815,7 @@ AssetExpected<void> Import::updateDcRoomRowRackGroup(tntdb::Connection& conn, ui
     {
         auto ret = db::deleteAssetElementFromAssetGroups(conn, elementId);
         if (!ret) {
-            log_error("%s", ret.error().c_str());
+            logError(ret.error());
             return unexpected(ret.error());
         }
     }
@@ -829,7 +824,7 @@ AssetExpected<void> Import::updateDcRoomRowRackGroup(tntdb::Connection& conn, ui
         auto ret = db::insertElementIntoGroups(conn, groups, elementId);
         if (!ret || *ret != groups.size()) {
             auto errmsg = "cannot insert device into all specified groups"_tr;
-            log_error("end: %s", errmsg.toString().c_str());
+            logError(errmsg);
             return unexpected(errmsg);
         }
     }
@@ -837,14 +832,14 @@ AssetExpected<void> Import::updateDcRoomRowRackGroup(tntdb::Connection& conn, ui
     return {};
 }
 
-AssetExpected<void> Import::updateDevice(tntdb::Connection& conn, uint32_t elementId, const std::string& elementName,
+AssetExpected<void> Import::updateDevice(tnt::Connection& conn, uint32_t elementId, const std::string& elementName,
     uint32_t parentId, const std::map<std::string, std::string>& extattributes, const std::string& status,
     uint16_t priority, const std::set<uint32_t>& groups, const std::vector<db::AssetLink>& links,
     const std::string& assetTag, const std::map<std::string, std::string>& extattributesRO) const
 {
     {
-        auto ret = updateDcRoomRowRackGroup(conn, elementId, elementName, parentId, extattributes, status, priority,
-            groups, assetTag, extattributesRO);
+        auto ret = updateDcRoomRowRackGroup(
+            conn, elementId, elementName, parentId, extattributes, status, priority, groups, assetTag, extattributesRO);
         if (!ret) {
             return unexpected(ret.error());
         }
@@ -860,7 +855,7 @@ AssetExpected<void> Import::updateDevice(tntdb::Connection& conn, uint32_t eleme
         auto ret = db::deleteAssetLinksTo(conn, elementId);
         if (!ret) {
             auto errmsg = "cannot remove old power sources"_tr;
-            log_error("%s", errmsg.toString().c_str());
+            logError(errmsg);
             return unexpected(errmsg);
         }
     }
@@ -869,7 +864,7 @@ AssetExpected<void> Import::updateDevice(tntdb::Connection& conn, uint32_t eleme
         auto ret = db::insertIntoAssetLinks(conn, linksCopy);
         if (!ret) {
             auto errmsg = "cannot add new power sources"_tr;
-            log_error("end: %s", errmsg.toString().c_str());
+            logError(errmsg);
             return unexpected(errmsg);
         }
     }
@@ -877,7 +872,7 @@ AssetExpected<void> Import::updateDevice(tntdb::Connection& conn, uint32_t eleme
     return {};
 }
 
-Expected<uint32_t> Import::insertDcRoomRowRackGroup(tntdb::Connection& conn, const std::string& elementName,
+Expected<uint32_t> Import::insertDcRoomRowRackGroup(tnt::Connection& conn, const std::string& elementName,
     uint16_t elementTypeId, uint32_t parentId, const std::map<std::string, std::string>& extattributes,
     const std::string& status, uint16_t priority, const std::set<uint32_t>& groups, const std::string& assetTag,
     const std::map<std::string, std::string>& extattributesRO) const
@@ -890,7 +885,7 @@ Expected<uint32_t> Import::insertDcRoomRowRackGroup(tntdb::Connection& conn, con
     }
 
     std::string iname = trimmed(persist::typeid_to_type(elementTypeId));
-    log_debug("element_name = '%s/%s'", elementName.c_str(), iname.c_str());
+    logDebug("element_name = '{}/{}'", elementName, iname);
 
     if (status == "nonactive") {
         return unexpected("Element '{}' cannot be inactivated. Change status to 'active'."_tr.format(elementName));
@@ -898,11 +893,19 @@ Expected<uint32_t> Import::insertDcRoomRowRackGroup(tntdb::Connection& conn, con
 
     uint32_t elementId;
     {
-        auto ret =
-            db::insertIntoAssetElement(conn, iname, elementTypeId, parentId, status, priority, 0, assetTag, false);
+        db::AssetElement el;
+        el.name      = iname;
+        el.typeId    = elementTypeId;
+        el.parentId  = parentId;
+        el.status    = status;
+        el.priority  = priority;
+        el.subtypeId = 0;
+        el.assetTag  = assetTag;
+
+        auto ret = db::insertIntoAssetElement(conn, el, false);
 
         if (!ret) {
-            log_error("end: %s", ret.error().c_str());
+            logError(ret.error());
             return unexpected(ret.error());
         }
         elementId = uint32_t(*ret);
@@ -911,7 +914,7 @@ Expected<uint32_t> Import::insertDcRoomRowRackGroup(tntdb::Connection& conn, con
     {
         auto ret = db::insertIntoAssetExtAttributes(conn, elementId, extattributes, false);
         if (!ret) {
-            log_error("end: device was not inserted (fail in ext_attributes)");
+            logError("device was not inserted (fail in ext_attributes)");
             return unexpected(ret.error());
         }
     }
@@ -919,7 +922,7 @@ Expected<uint32_t> Import::insertDcRoomRowRackGroup(tntdb::Connection& conn, con
     if (!extattributesRO.empty()) {
         auto ret = db::insertIntoAssetExtAttributes(conn, elementId, extattributesRO, true);
         if (!ret) {
-            log_error("end: device was not inserted (fail in ext_attributes)");
+            logError("device was not inserted (fail in ext_attributes)");
             return unexpected(ret.error());
         }
     }
@@ -927,7 +930,7 @@ Expected<uint32_t> Import::insertDcRoomRowRackGroup(tntdb::Connection& conn, con
     {
         auto ret = db::insertElementIntoGroups(conn, groups, elementId);
         if (!ret) {
-            log_info("end: device was not inserted (fail into groups)");
+            logInfo("end: device was not inserted (fail into groups)");
             return unexpected(ret.error());
         }
     }
@@ -935,12 +938,12 @@ Expected<uint32_t> Import::insertDcRoomRowRackGroup(tntdb::Connection& conn, con
     if (elementTypeId == persist::asset_type::DATACENTER || elementTypeId == persist::asset_type::RACK) {
         auto ret = db::insertIntoMonitorDevice(conn, 1, elementName);
         if (!ret) {
-            log_info("end: \"device\" was not inserted (fail monitor_device)");
+            logInfo("\"device\" was not inserted (fail monitor_device)");
             return unexpected(ret.error());
         } else {
             auto ret1 = db::insertIntoMonitorAssetRelation(conn, uint16_t(*ret), elementId);
             if (!ret1) {
-                log_info("end: monitor asset link was not inserted (fail monitor asset relation)");
+                logInfo("monitor asset link was not inserted (fail monitor asset relation)");
                 return unexpected(ret1.error());
             }
         }
@@ -948,7 +951,7 @@ Expected<uint32_t> Import::insertDcRoomRowRackGroup(tntdb::Connection& conn, con
     return elementId;
 }
 
-Expected<uint32_t> Import::insertDevice(tntdb::Connection& conn, const std::vector<db::AssetLink>& links,
+Expected<uint32_t> Import::insertDevice(tnt::Connection& conn, const std::vector<db::AssetLink>& links,
     const std::set<uint32_t>& groups, const std::string& elementName, uint32_t parentId,
     const std::map<std::string, std::string>& extattributes, uint16_t assetDeviceTypeId, const std::string& status,
     uint16_t priority, const std::string& assetTag, const std::map<std::string, std::string>& extattributesRO) const
@@ -960,14 +963,22 @@ Expected<uint32_t> Import::insertDevice(tntdb::Connection& conn, const std::vect
     }
 
     std::string iname = trimmed(persist::subtypeid_to_subtype(assetDeviceTypeId));
-    log_debug("  element_name = '%s/%s'", elementName.c_str(), iname.c_str());
+    logDebug("  element_name = '{}/{}'", elementName, iname);
 
     uint32_t elementId;
     {
-        auto ret = db::insertIntoAssetElement(conn, iname, persist::asset_type::DEVICE, parentId, status, priority,
-            assetDeviceTypeId, assetTag, false);
+        db::AssetElement el;
+        el.name      = iname;
+        el.typeId    = persist::asset_type::DEVICE;
+        el.parentId  = parentId;
+        el.status    = status;
+        el.priority  = priority;
+        el.subtypeId = assetDeviceTypeId;
+        el.assetTag  = assetTag;
+
+        auto ret = db::insertIntoAssetElement(conn, el, false);
         if (!ret) {
-            log_info("end: device was not inserted (fail in element)");
+            logInfo("device was not inserted (fail in element)");
             return unexpected(ret.error());
         }
         elementId = uint32_t(*ret);
@@ -976,7 +987,7 @@ Expected<uint32_t> Import::insertDevice(tntdb::Connection& conn, const std::vect
     {
         auto ret = db::insertIntoAssetExtAttributes(conn, elementId, extattributes, false);
         if (!ret) {
-            log_error("end: device was not inserted (fail in ext_attributes)");
+            logError("device was not inserted (fail in ext_attributes)");
             return unexpected(ret.error());
         }
     }
@@ -984,7 +995,7 @@ Expected<uint32_t> Import::insertDevice(tntdb::Connection& conn, const std::vect
     if (!extattributesRO.empty()) {
         auto ret = db::insertIntoAssetExtAttributes(conn, elementId, extattributesRO, true);
         if (!ret) {
-            log_error("end: device was not inserted (fail in ext_attributes)");
+            logError("device was not inserted (fail in ext_attributes)");
             return unexpected(ret.error());
         }
     }
@@ -992,21 +1003,21 @@ Expected<uint32_t> Import::insertDevice(tntdb::Connection& conn, const std::vect
     {
         auto ret = db::insertElementIntoGroups(conn, groups, elementId);
         if (!ret) {
-            log_info("end: device was not inserted (fail into groups)");
+            logInfo("device was not inserted (fail into groups)");
             return unexpected(ret.error());
         }
     }
 
     // links don't have 'dest' defined - it was not known until now; we have to fix it
     auto linksCopy = links;
-    for (auto& one_link : linksCopy) {
-        one_link.dest = elementId;
+    for (auto& link : linksCopy) {
+        link.dest = elementId;
     }
 
     {
         auto ret = db::insertIntoAssetLinks(conn, linksCopy);
         if (!ret) {
-            log_info("end: not all links were inserted (fail asset_link)");
+            logInfo("not all links were inserted (fail asset_link)");
             return unexpected(ret.error());
         }
     }
@@ -1016,20 +1027,20 @@ Expected<uint32_t> Import::insertDevice(tntdb::Connection& conn, const std::vect
         {
             auto ret = db::insertIntoMonitorDevice(conn, *select, elementName);
             if (!ret) {
-                log_info("end: device was not inserted (fail monitor_device)");
+                logInfo("device was not inserted (fail monitor_device)");
                 return unexpected(ret.error());
             } else {
                 auto ret1 = db::insertIntoMonitorAssetRelation(conn, *ret, elementId);
                 if (!ret1) {
-                    log_info("end: monitor asset link was not inserted (fail monitor asset relation)");
+                    logInfo("monitor asset link was not inserted (fail monitor asset relation)");
                     return unexpected(ret.error());
                 }
             }
         }
     } else if (select.error() == "not found") {
-        log_debug("device should not being inserted into monitor part");
+        logDebug("device should not being inserted into monitor part");
     } else {
-        log_warning("end: some error in denoting a type of device in monitor part");
+        logWarn("some error in denoting a type of device in monitor part");
         return unexpected(select.error());
     }
     return elementId;

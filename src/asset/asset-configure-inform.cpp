@@ -19,6 +19,7 @@
  */
 
 #include "asset-configure-inform.h"
+#include "db.h"
 #include <fty_common.h>
 #include <fty_common_db.h>
 #include <fty_common_mlm_utils.h>
@@ -37,20 +38,12 @@ static zhash_t* s_map2zhash(const std::map<std::string, std::string>& m)
     return ret;
 }
 
-static bool getDcUPSes(tntdb::Connection& conn, const std::string& assetName, zhash_t* hash)
+static bool getDcUPSes(tnt::Connection& conn, const std::string& assetName, zhash_t* hash)
 {
     std::vector<std::string> listUps;
 
-    auto cb = [&listUps](const tntdb::Row& row) {
-        uint32_t type_id = 0;
-        row["type_id"].get(type_id);
-
-        uint32_t device_type_name = 0;
-        row["subtype_id"].get(device_type_name);
-
-        std::string device_name = "";
-        row["name"].get(device_name);
-        listUps.push_back(device_name);
+    auto cb = [&listUps](const tnt::Row& row) {
+        listUps.push_back(row.get("name"));
     };
 
     auto dcId = db::nameToAssetId(assetName);
@@ -103,7 +96,7 @@ Expected<void> sendConfigure(
         return unexpected(" mlm_client_set_producer () failed.");
     }
 
-    tntdb::Connection conn = tntdb::connect(DBConn::url);
+    tnt::Connection conn;
     for (const auto& oneRow : rows) {
 
         std::string s_priority    = std::to_string(oneRow.first.priority);
@@ -130,13 +123,12 @@ Expected<void> sendConfigure(
         // this is a bit hack, but we now that our topology ends with datacenter (hopefully)
         std::string dc_name;
 
-        std::function<void(const tntdb::Row&)> cb = [aux, &dc_name](const tntdb::Row& row) {
+        auto cb = [aux, &dc_name](const tnt::Row& row) {
             for (const auto& name : {"parent_name1", "parent_name2", "parent_name3", "parent_name4", "parent_name5",
                      "parent_name6", "parent_name7", "parent_name8", "parent_name9", "parent_name10"}) {
-                std::string foo;
-                row[name].get(foo);
+                std::string foo = row.get(name);
                 std::string hash_name = name;
-                //                11 == strlen ("parent_name")
+                // 11 == strlen ("parent_name")
                 hash_name.insert(11, 1, '.');
                 if (!foo.empty()) {
                     zhash_insert(aux, hash_name.c_str(), voidify(foo));
