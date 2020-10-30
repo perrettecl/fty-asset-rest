@@ -19,13 +19,13 @@
  */
 
 #include "json.h"
+#include "asset-computed.h"
 #include "asset-manager.h"
 #include <fty/split.h>
 #include <fty_common.h>
 #include <fty_common_db_asset.h>
 #include <fty_common_rest.h>
 #include <fty_shm.h>
-#include "asset-computed.h"
 
 namespace fty::asset {
 
@@ -74,16 +74,21 @@ std::string getJsonAsset(uint32_t elemId)
     // Get informations from database
     AssetManager asset_mgr;
     auto         tmp = asset_mgr.getItem(elemId);
+
     if (!tmp) {
         log_error(tmp.error().c_str());
         return json;
     }
 
-    std::pair<std::string, std::string> parent_names    = DBAssets::id_to_name_ext_name(tmp->basic.parent_id);
-    std::string                         parent_name     = parent_names.first;
-    std::string                         ext_parent_name = parent_names.second;
+    auto parent_names    = db::idToNameExtName(tmp->parentId);
+    if (!parent_names) {
+        log_error(parent_names.error().c_str());
+        return "";
+    }
+    std::string                         parent_name     = parent_names->first;
+    std::string                         ext_parent_name = parent_names->second;
 
-    std::pair<std::string, std::string> asset_names = DBAssets::id_to_name_ext_name(tmp->basic.id);
+    std::pair<std::string, std::string> asset_names = DBAssets::id_to_name_ext_name(tmp->id);
     if (asset_names.first.empty() && asset_names.second.empty()) {
         log_error("Database failure");
         return json;
@@ -92,17 +97,17 @@ std::string getJsonAsset(uint32_t elemId)
 
     json += "{";
 
-    json += utils::json::jsonify("id", tmp->basic.name) + ",";
+    json += utils::json::jsonify("id", tmp->name) + ",";
     json += "\"power_devices_in_uri\": \"/api/v1/assets\?in=";
-    json += (tmp->basic.name);
+    json += (tmp->name);
     json += "&sub_type=epdu,pdu,feed,genset,ups,sts,rackcontroller\",";
     json += utils::json::jsonify("name", asset_ext_name) + ",";
-    json += utils::json::jsonify("status", tmp->basic.status) + ",";
-    json += utils::json::jsonify("priority", "P" + std::to_string(tmp->basic.priority)) + ",";
-    json += utils::json::jsonify("type", tmp->basic.type_name) + ",";
+    json += utils::json::jsonify("status", tmp->status) + ",";
+    json += utils::json::jsonify("priority", "P" + std::to_string(tmp->priority)) + ",";
+    json += utils::json::jsonify("type", tmp->typeName) + ",";
 
     // if element is located, then show the location
-    if (tmp->basic.parent_id != 0) {
+    if (tmp->parentId != 0) {
         json += utils::json::jsonify("location_uri", "/api/v1/asset/" + parent_name) + ",";
         json += utils::json::jsonify("location_id", parent_name) + ",";
         json += utils::json::jsonify("location", ext_parent_name) + ",";
@@ -138,28 +143,28 @@ std::string getJsonAsset(uint32_t elemId)
     json += "]";
 
     // Device is special element with more attributes
-    if (tmp->basic.type_id == persist::asset_type::DEVICE) {
+    if (tmp->typeId == persist::asset_type::DEVICE) {
         json += ", \"powers\": [";
 
         if (!tmp->powers.empty()) {
             size_t   power_count = tmp->powers.size();
             uint32_t i           = 1;
             for (auto& oneLink : tmp->powers) {
-                std::pair<std::string, std::string> link_names = DBAssets::id_to_name_ext_name(oneLink.src_id);
-                if (link_names.first.empty() && link_names.second.empty()) {
+                auto link_names = db::idToNameExtName(oneLink.srcId);
+                if (!link_names || (link_names->first.empty() && link_names->second.empty())) {
                     log_error("Database failure");
                     json = "";
                     return json;
                 }
                 json += "{";
-                json += utils::json::jsonify("src_name", link_names.second) + ",";
-                json += utils::json::jsonify("src_id", oneLink.src_name);
+                json += utils::json::jsonify("src_name", link_names->second) + ",";
+                json += utils::json::jsonify("src_id", oneLink.srcName);
 
-                if (!oneLink.src_socket.empty()) {
-                    json += "," + utils::json::jsonify("src_socket", oneLink.src_socket);
+                if (!oneLink.srcSocket.empty()) {
+                    json += "," + utils::json::jsonify("src_socket", oneLink.srcSocket);
                 }
-                if (!oneLink.dest_socket.empty()) {
-                    json += "," + utils::json::jsonify("dest_socket", oneLink.dest_socket);
+                if (!oneLink.destSocket.empty()) {
+                    json += "," + utils::json::jsonify("dest_socket", oneLink.destSocket);
                 }
 
                 json += "}";
@@ -173,14 +178,14 @@ std::string getJsonAsset(uint32_t elemId)
         json += "]";
     }
     // ACE: to be consistent with RFC-11 this was put here
-    if (tmp->basic.type_id == persist::asset_type::GROUP) {
-        auto it = tmp->ext.find("type");
-        if (it != tmp->ext.end()) {
-            json += "," + utils::json::jsonify("sub_type", trimmed(it->second.first));
-            tmp->ext.erase(it);
+    if (tmp->typeId == persist::asset_type::GROUP) {
+        auto it = tmp->extAttributes.find("type");
+        if (it != tmp->extAttributes.end()) {
+            json += "," + utils::json::jsonify("sub_type", trimmed(it->second.value));
+            tmp->extAttributes.erase(it);
         }
     } else {
-        json += "," + utils::json::jsonify("sub_type", trimmed(tmp->basic.subtype_name));
+        json += "," + utils::json::jsonify("sub_type", trimmed(tmp->subtypeName));
 
         json += ", \"parents\" : [";
         size_t i = 1;
@@ -211,9 +216,9 @@ std::string getJsonAsset(uint32_t elemId)
     json += ", \"ext\" : [";
     bool isExtCommaNeeded = false;
 
-    if (!tmp->basic.asset_tag.empty()) {
+    if (!tmp->assetTag.empty()) {
         json += "{";
-        json += utils::json::jsonify("asset_tag", tmp->basic.asset_tag);
+        json += utils::json::jsonify("asset_tag", tmp->assetTag);
         json += ", \"read_only\" : false}";
         isExtCommaNeeded = true;
     }
@@ -231,14 +236,14 @@ std::string getJsonAsset(uint32_t elemId)
         cxxtools::Regex r_mac("^mac\\.[0-9][0-9]*$");
         cxxtools::Regex r_hostname("^hostname\\.[0-9][0-9]*$");
         cxxtools::Regex r_fqdn("^fqdn\\.[0-9][0-9]*$");
-        for (auto& oneExt : tmp->ext) {
+        for (auto& oneExt : tmp->extAttributes) {
             auto& attrName = oneExt.first;
 
             if (attrName == "name")
                 continue;
 
-            auto& attrValue  = oneExt.second.first;
-            auto  isReadOnly = oneExt.second.second;
+            auto& attrValue  = oneExt.second.value;
+            auto  isReadOnly = oneExt.second.readOnly;
             if (r_outlet_label.match(attrName)) {
                 auto oNumber = getOutletNumber(attrName);
                 auto it      = outlets.find(oNumber);
@@ -284,12 +289,12 @@ std::string getJsonAsset(uint32_t elemId)
             }
             // If we are here -> then this attribute is not special and should be returned as "ext"
             std::string extKey = oneExt.first;
-            std::string extVal = oneExt.second.first;
+            std::string extVal = oneExt.second.value;
 
             json += isExtCommaNeeded ? "," : "";
             json += "{";
             json += utils::json::jsonify(extKey, extVal) + ",\"read_only\" :";
-            json += oneExt.second.second ? "true" : "false";
+            json += oneExt.second.readOnly ? "true" : "false";
             json += "}";
 
             isExtCommaNeeded = true;
@@ -411,15 +416,16 @@ std::string getJsonAsset(uint32_t elemId)
     }
 
     json += ", \"computed\" : {";
-    if (persist::is_rack(tmp->basic.type_id)) {
-        int    freeusize         = free_u_size(tmp->basic.id);
-        double realpower_nominal = s_rack_realpower_nominal(tmp->basic.name.c_str());
+    if (persist::is_rack(tmp->typeId)) {
+        int    freeusize         = free_u_size(tmp->id);
+        double realpower_nominal = s_rack_realpower_nominal(tmp->name.c_str());
 
         json += "\"freeusize\":" + (freeusize >= 0 ? std::to_string(freeusize) : "null");
-        json += ",\"realpower.nominal\":" + (!std::isnan(realpower_nominal) ? std::to_string(realpower_nominal) : "null");
+        json +=
+            ",\"realpower.nominal\":" + (!std::isnan(realpower_nominal) ? std::to_string(realpower_nominal) : "null");
         json += ", \"outlet.available\" : {";
         std::map<std::string, int> res;
-        int                        rv = rack_outlets_available(tmp->basic.id, res);
+        int                        rv = rack_outlets_available(tmp->id, res);
         if (rv != 0) {
             log_error("Database failure");
             json = "";

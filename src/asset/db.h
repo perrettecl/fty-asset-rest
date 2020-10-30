@@ -280,12 +280,12 @@ inline tnt::Rows tnt::Connection::select(const std::string& queryStr, Args&&... 
 }
 
 template <typename... Args>
-uint tnt::Connection::execute(const std::string& queryStr, Args&&... args)
+inline uint tnt::Connection::execute(const std::string& queryStr, Args&&... args)
 {
     return Statement(m_connection.prepareCached(queryStr)).bind(std::forward<Args>(args)...).execute();
 }
 
-int64_t tnt::Connection::lastInsertId()
+inline int64_t tnt::Connection::lastInsertId()
 {
     return m_connection.lastInsertId();
 }
@@ -532,17 +532,17 @@ inline tnt::ConstIterator tnt::Rows::end() const
     return tnt::ConstIterator(*this, size());
 }
 
-size_t tnt::Rows::size() const
+inline size_t tnt::Rows::size() const
 {
     return m_rows.size();
 }
 
-bool tnt::Rows::empty() const
+inline bool tnt::Rows::empty() const
 {
     return m_rows.empty();
 }
 
-tnt::Row tnt::Rows::operator[](size_t off) const
+inline tnt::Row tnt::Rows::operator[](size_t off) const
 {
     return tnt::Row(m_rows.getRow(unsigned(off)));
 }
@@ -556,16 +556,16 @@ inline tnt::Rows::Rows(const tntdb::Result& rows)
 // Transaction impl
 // =====================================================================================================================
 
-tnt::Transaction::Transaction(Connection& con):
+inline tnt::Transaction::Transaction(Connection& con):
     m_trans(tntdb::Transaction(con.m_connection))
 {}
 
-void tnt::Transaction::commit()
+inline void tnt::Transaction::commit()
 {
     m_trans.commit();
 }
 
-void tnt::Transaction::rollback()
+inline void tnt::Transaction::rollback()
 {
     m_trans.rollback();
 }

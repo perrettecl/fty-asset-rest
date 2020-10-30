@@ -35,7 +35,8 @@ unsigned Delete::run()
 
     AssetManager assetMgr;
 
-    auto res = assetMgr.deleteItem(*dbid);
+    auto res = assetMgr.deleteItem(uint32_t(*dbid));
+    return HTTP_OK;
 }
 
 } // namespace fty::asset

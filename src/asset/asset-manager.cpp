@@ -4,6 +4,12 @@
 #include "logger.h"
 #include <fty_common_db.h>
 #include <fty_log.h>
+#include "json.h"
+#include <fty_common_mlm.h>
+#include <fty_asset_activator.h>
+
+static constexpr const char* ENV_OVERRIDE_LAST_DC_DELETION_CHECK = "FTY_OVERRIDE_LAST_DC_DELETION_CHECK";
+static constexpr const char* AGENT_ASSET_ACTIVATOR = "etn-licensing-credits";
 
 namespace fty::asset {
 
@@ -66,7 +72,6 @@ Expected<db::WebAssetElementExt> AssetManager::getItem(uint32_t id)
             return unexpected(ret.error());
         }
 
-        ;
         if (auto ret = db::selectAssetElementGroups(id)) {
             el.groups = *ret;
         } else {
@@ -140,22 +145,138 @@ Expected<db::AssetElement> AssetManager::deleteItem(uint32_t id)
         case persist::asset_type::ROW:
         case persist::asset_type::ROOM:
         case persist::asset_type::RACK:
-            return persist::delete_dc_room_row_rack(conn, id);
+            return deleteDcRoomRowRack(*asset);
         case persist::asset_type::GROUP:
-            return persist::delete_group(conn, id);
-        case persist::asset_type::DEVICE:
-        {
-            if (basic_info.item.status == "active")
-            {
-                //we need device JSON in order to delete active device
-                std::string asset_json = getJsonAsset (NULL, id);
-                return persist::delete_device(conn, id, asset_json);
-            }
-            return persist::delete_device(conn, id);
+            return deleteGroup(*asset);
+        case persist::asset_type::DEVICE: {
+            return deleteDevice(*asset);
         }
     }
     logError("unknown type");
     return unexpected("unknown type"_tr);
+}
+
+Expected<db::AssetElement> AssetManager::deleteDcRoomRowRack(const db::AssetElement& element)
+{
+    tnt::Connection  conn;
+    tnt::Transaction trans(conn);
+
+    static const std::string countSql = R"(
+        SELECT
+            COUNT(id_asset_element) as count
+        FROM
+            t_bios_asset_element
+        WHERE
+            id_type = (select id_asset_element_type from  t_bios_asset_element_type where name = "datacenter") AND
+            id_asset_element != :element
+    )";
+
+    // Don't allow the deletion of the last datacenter (unless overriden)
+    if (getenv(ENV_OVERRIDE_LAST_DC_DELETION_CHECK) == nullptr) {
+        unsigned numDatacentersAfterDelete;
+        try {
+            numDatacentersAfterDelete = conn.selectRow(countSql, "element"_p = element.id).get<unsigned>("count");
+        } catch (const std::exception& e) {
+            return unexpected(e.what());
+        }
+        if (numDatacentersAfterDelete == 0) {
+            return unexpected("will not allow last datacenter to be deleted"_tr);
+        }
+    }
+
+    if (auto ret = db::deleteAssetElementFromAssetGroups(conn, element.id); !ret) {
+        trans.rollback();
+        logInfo("error occured during removing from groups");
+        return unexpected("error occured during removing from groups"_tr);
+    }
+
+    if (auto ret = db::convertAssetToMonitor(element.id); !ret) {
+        logError(ret.error());
+        return unexpected("error during converting asset to monitor"_tr);
+    }
+
+    if (auto ret = db::deleteMonitorAssetRelationByA(conn, element.id); !ret) {
+        trans.rollback();
+        logError(ret.error());
+        return unexpected("error occured during removing ma relation"_tr);
+    }
+
+    if (auto ret = db::deleteAssetElement(conn, element.id); !ret) {
+        trans.rollback();
+        logError(ret.error());
+        return unexpected("error occured during removing element"_tr);
+    }
+
+    trans.commit();
+    return element;
+}
+
+Expected<db::AssetElement> AssetManager::deleteGroup(const db::AssetElement& element)
+{
+    tnt::Connection  conn;
+    tnt::Transaction trans(conn);
+
+    if (auto ret = db::deleteAssetGroupLinks(conn, element.id); !ret) {
+        trans.rollback();
+        logError(ret.error());
+        return unexpected("error occured during removing from groups"_tr);
+    }
+
+    if (auto ret = db::deleteAssetElement(conn, element.id); !ret) {
+        trans.rollback();
+        logError(ret.error());
+        return unexpected("error occured during removing element"_tr);
+    }
+
+    trans.commit();
+    return element;
+}
+
+Expected<db::AssetElement> AssetManager::deleteDevice(const db::AssetElement& element)
+{
+    tnt::Connection  conn;
+    tnt::Transaction trans(conn);
+
+    // make the device inactive first
+    if (element.status == "active") {
+        std::string asset_json = getJsonAsset(element.id);
+
+        try {
+            mlm::MlmSyncClient  client(AGENT_FTY_ASSET, AGENT_ASSET_ACTIVATOR);
+            fty::AssetActivator activationAccessor(client);
+            activationAccessor.deactivate(asset_json);
+        } catch (const std::exception& e) {
+            logError("Error during asset deactivation - {}", e.what());
+            return unexpected(e.what());
+        }
+    }
+
+    if (auto ret = db::deleteAssetElementFromAssetGroups(conn, element.id); !ret) {
+        trans.rollback();
+        logError(ret.error());
+        return unexpected("error occured during removing from groups"_tr);
+    }
+
+    if (auto ret = db::deleteAssetLinksTo(conn, element.id); !ret) {
+        trans.rollback();
+        logError(ret.error());
+        return unexpected("error occured during removing links"_tr);
+    }
+
+    if (auto ret = db::deleteMonitorAssetRelationByA(conn, element.id); !ret) {
+        trans.rollback();
+        logError(ret.error());
+        return unexpected("error occured during removing ma relation"_tr);
+    }
+
+    if (auto ret = db::deleteAssetElement(conn, element.id); !ret) {
+        trans.rollback();
+        logError(ret.error());
+        return unexpected("error occured during removing element"_tr);
+    }
+
+    trans.commit();
+    return element;
 }
 
 } // namespace fty::asset

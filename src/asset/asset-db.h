@@ -240,7 +240,31 @@ Expected<std::map<uint32_t, std::string>> selectShortElements(uint16_t typeId, u
 /// @returns count or error
 Expected<int> countKeytag(const std::string& keytag, const std::string& value);
 
+/// Converts asset id to monitor id
+/// @param assetElementId asset element id
+/// @returns monitor id or error
+Expected<uint16_t> convertAssetToMonitor(uint32_t assetElementId);
+
+/// Deletes given asset from t_bios_monitor_asset_relation
+/// @param conn database established connection
+/// @param id asset element id
+/// @returns count of affected rows or error
+Expected<uint> deleteMonitorAssetRelationByA(tnt::Connection& conn, uint32_t id);
+
+/// Deletes asset from t_bios_asset_element
+/// @param conn database established connection
+/// @param elementId asset element id
+/// @returns count of affected rows or error
+Expected<uint> deleteAssetElement(tnt::Connection& conn, uint32_t elementId);
+
+/// Deletes all data about a group
+/// @param conn database established connection
+/// @param assetGroupId asset group id
+/// @returns count of affected rows or error
+Expected<uint> deleteAssetGroupLinks(tnt::Connection& conn, uint32_t assetGroupId);
+
 Expected<std::map<std::string, int>> readElementTypes();
 Expected<std::map<std::string, int>> readDeviceTypes();
+
 
 } // namespace fty::asset::db

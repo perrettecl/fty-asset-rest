@@ -18,6 +18,10 @@ public:
     Expected<db::WebAssetElementExt> getItem(uint32_t id);
     Expected<AssetList>              getItems(const std::string& typeName, const std::string& subtypeName);
     Expected<db::AssetElement>       deleteItem(uint32_t id);
+private:
+    Expected<db::AssetElement> deleteDcRoomRowRack(const db::AssetElement& element);
+    Expected<db::AssetElement> deleteGroup(const db::AssetElement& element);
+    Expected<db::AssetElement> deleteDevice(const db::AssetElement& element);
 };
 
 } // namespace fty::asset

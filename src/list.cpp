@@ -54,7 +54,7 @@ unsigned List::run()
         // Get data
         auto allAssetsShort = assetMgr.getItems(*assetType, assetSubtype);
         if (!allAssetsShort) {
-            throw rest::Error(allAssetsShort.error().msg);
+            throw rest::Error(allAssetsShort.error());
         }
 
         for (const auto& [id, name] : *allAssetsShort) {

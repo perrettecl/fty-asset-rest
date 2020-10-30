@@ -961,7 +961,7 @@ Expected<std::vector<DbAssetLink>> selectAssetDeviceLinksTo(uint32_t elementId, 
 
             ret.push_back(link);
         }
-        return ret;
+        return std::move(ret);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
@@ -1027,6 +1027,84 @@ Expected<int> countKeytag(const std::string& keytag, const std::string& value)
         // clang-format on
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), keytag));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<uint16_t> convertAssetToMonitor(uint32_t assetElementId)
+{
+    static const std::string sql = R"(
+        SELECT
+            v.id_discovered_device
+        FROM
+            v_bios_monitor_asset_relation v
+        WHERE
+            v.id_asset_element = :id
+    )";
+
+    try {
+        tnt::Connection conn;
+        auto            res = conn.selectRow(sql, "id"_p = assetElementId);
+        return res.get<uint16_t>("id_discovered_device");
+    } catch (const tntdb::NotFound&) {
+        return unexpected(error(Errors::ElementNotFound).format(assetElementId));
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), assetElementId));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<uint> deleteMonitorAssetRelationByA(tnt::Connection& conn, uint32_t id)
+{
+    static const std::string sql = R"(
+        DELETE FROM
+            t_bios_monitor_asset_relation
+        WHERE
+            id_asset_element = :id
+    )";
+
+    try {
+        return conn.execute(sql, "id"_p = id);
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), id));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<uint> deleteAssetElement(tnt::Connection& conn, uint32_t elementId)
+{
+    static const std::string sql = R"(
+        DELETE FROM
+            t_bios_asset_element
+        WHERE
+            id_asset_element = :element
+    )";
+
+    try {
+        return conn.execute(sql, "element"_p = elementId);
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<uint> deleteAssetGroupLinks(tnt::Connection& conn, uint32_t assetGroupId)
+{
+    static const std::string sql = R"(
+        DELETE FROM
+            t_bios_asset_group_relation
+        WHERE
+            id_asset_group = :grp
+    )";
+
+    try {
+        return conn.execute(sql, "grp"_p = assetGroupId);
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), assetGroupId));
     }
 }
 

@@ -136,7 +136,7 @@ Expected<void> sendConfigure(
                 }
             }
         };
-        int res = db::selectAssetElementSuperParent(conn, oneRow.first.id, cb);
+        int res = db::selectAssetElementSuperParent(oneRow.first.id, cb);
         if (!res) {
             zhash_destroy(&aux);
             mlm_client_destroy(&client);
