@@ -15,13 +15,17 @@ class AssetManager
 public:
     using AssetList = std::map<uint32_t, std::string>;
 
-    Expected<db::WebAssetElementExt> getItem(uint32_t id);
-    Expected<AssetList>              getItems(const std::string& typeName, const std::string& subtypeName);
-    Expected<db::AssetElement>       deleteItem(uint32_t id);
+    static Expected<db::WebAssetElementExt> getItem(uint32_t id);
+    static Expected<AssetList>              getItems(const std::string& typeName, const std::string& subtypeName);
+    static Expected<db::AssetElement>       deleteItem(uint32_t id);
+    static std::map<std::string, Expected<db::AssetElement>> deleteItems(const std::map<uint32_t, std::string>& ids);
+
+    static Expected<db::AssetElement> deleteAsset(const db::AssetElement& element);
+
 private:
-    Expected<db::AssetElement> deleteDcRoomRowRack(const db::AssetElement& element);
-    Expected<db::AssetElement> deleteGroup(const db::AssetElement& element);
-    Expected<db::AssetElement> deleteDevice(const db::AssetElement& element);
+    static Expected<db::AssetElement> deleteDcRoomRowRack(const db::AssetElement& element);
+    static Expected<db::AssetElement> deleteGroup(const db::AssetElement& element);
+    static Expected<db::AssetElement> deleteDevice(const db::AssetElement& element);
 };
 
 } // namespace fty::asset

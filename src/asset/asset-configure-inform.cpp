@@ -126,7 +126,7 @@ Expected<void> sendConfigure(
         auto cb = [aux, &dc_name](const tnt::Row& row) {
             for (const auto& name : {"parent_name1", "parent_name2", "parent_name3", "parent_name4", "parent_name5",
                      "parent_name6", "parent_name7", "parent_name8", "parent_name9", "parent_name10"}) {
-                std::string foo = row.get(name);
+                std::string foo       = row.get(name);
                 std::string hash_name = name;
                 // 11 == strlen ("parent_name")
                 hash_name.insert(11, 1, '.');
@@ -195,4 +195,17 @@ Expected<void> sendConfigure(
     return sendConfigure({std::make_pair(row, actionType)}, agentName);
 }
 
+std::string generateMlmClientId(const std::string& client_name)
+{
+    std::string       name = client_name;
+    std::stringstream ss;
+    ss << std::this_thread::get_id();
+    std::string pid = ss.str();
+    if (!pid.empty()) {
+        name += "." + pid;
+    } else {
+        name += "." + std::to_string(random());
+    }
+    return name;
+}
 } // namespace fty::asset

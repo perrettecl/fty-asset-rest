@@ -45,14 +45,12 @@ unsigned List::run()
         }
     }
 
-    AssetManager assetMgr;
-
     pack::Map<pack::ObjectList<Info>> ret;
     auto&                             val = ret.append(*assetType + "s");
 
     for (const auto& assetSubtype : subtypes) {
         // Get data
-        auto allAssetsShort = assetMgr.getItems(*assetType, assetSubtype);
+        auto allAssetsShort = AssetManager::getItems(*assetType, assetSubtype);
         if (!allAssetsShort) {
             throw rest::Error(allAssetsShort.error());
         }

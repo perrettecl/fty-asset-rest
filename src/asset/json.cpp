@@ -72,21 +72,20 @@ std::string getJsonAsset(uint32_t elemId)
 {
     std::string json;
     // Get informations from database
-    AssetManager asset_mgr;
-    auto         tmp = asset_mgr.getItem(elemId);
+    auto tmp = AssetManager::getItem(elemId);
 
     if (!tmp) {
         log_error(tmp.error().c_str());
         return json;
     }
 
-    auto parent_names    = db::idToNameExtName(tmp->parentId);
+    auto parent_names = db::idToNameExtName(tmp->parentId);
     if (!parent_names) {
         log_error(parent_names.error().c_str());
         return "";
     }
-    std::string                         parent_name     = parent_names->first;
-    std::string                         ext_parent_name = parent_names->second;
+    std::string parent_name     = parent_names->first;
+    std::string ext_parent_name = parent_names->second;
 
     std::pair<std::string, std::string> asset_names = DBAssets::id_to_name_ext_name(tmp->id);
     if (asset_names.first.empty() && asset_names.second.empty()) {

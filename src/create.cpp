@@ -50,19 +50,6 @@ Expected<std::string> Create::readName(const std::string& cnt) const
     return std::move(item);
 }
 
-static std::string generateMlmClientId(const std::string& client_name) {
-    std::string name = client_name;
-    std::stringstream ss;
-    ss << std::this_thread::get_id();
-    std::string pid = ss.str();
-    if (!pid.empty()) {
-        name += "." + pid;
-    } else {
-        name += "." + std::to_string(random());
-    }
-    return name;
-}
-
 unsigned Create::run()
 {
     rest::User user(m_request);

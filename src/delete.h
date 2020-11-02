@@ -33,6 +33,10 @@ public:
     unsigned run() override;
 
 private:
+    unsigned deleteOneAsset(const std::string& idStr);
+    unsigned deleteAssets(const std::string& idsStr);
+
+private:
     // clang-format off
     Permissions m_permissions = {
         { rest::User::Profile::Admin,     rest::Access::Delete }

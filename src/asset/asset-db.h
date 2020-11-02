@@ -263,6 +263,16 @@ Expected<uint> deleteAssetElement(tnt::Connection& conn, uint32_t elementId);
 /// @returns count of affected rows or error
 Expected<uint> deleteAssetGroupLinks(tnt::Connection& conn, uint32_t assetGroupId);
 
+/// Selects childrent element id
+/// @param parentId parent id
+/// @returns list of children or error
+Expected<std::vector<uint32_t>> selectAssetsByParent(uint32_t parentId);
+
+/// Selects all corresponding links for element
+/// @param elementId element id
+/// @returns list of devices where element is linked or error
+Expected<std::vector<uint32_t>> selectAssetDeviceLinksSrc(uint32_t elementId);
+
 Expected<std::map<std::string, int>> readElementTypes();
 Expected<std::map<std::string, int>> readDeviceTypes();
 

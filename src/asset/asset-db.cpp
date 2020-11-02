@@ -168,7 +168,7 @@ Expected<AssetElement> selectAssetElementByName(const std::string& elementName)
 
         return std::move(el);
     } catch (const tntdb::NotFound&) {
-        return unexpected("element with specified name was not found"_tr);
+        return unexpected(error(Errors::ElementNotFound).format(elementName));
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementName));
     }
@@ -208,7 +208,9 @@ Expected<void> selectAssetElementWebById(uint32_t elementId, WebAssetElement& as
         FROM
             v_web_element v
         WHERE
-            :id = v.id)";
+            :id = v.id
+    )";
+
     try {
         tnt::Connection db;
 
@@ -229,7 +231,7 @@ Expected<void> selectAssetElementWebById(uint32_t elementId, WebAssetElement& as
 
         return {};
     } catch (const tntdb::NotFound&) {
-        return unexpected("element with specified id was not found"_tr);
+        return unexpected(error(Errors::ElementNotFound).format(elementId));
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
@@ -1109,5 +1111,53 @@ Expected<uint> deleteAssetGroupLinks(tnt::Connection& conn, uint32_t assetGroupI
 }
 
 // =====================================================================================================================
+
+Expected<std::vector<uint32_t>> selectAssetsByParent(uint32_t parentId)
+{
+    static const std::string sql = R"(
+        SELECT
+            id
+        FROM
+            v_bios_asset_element
+        WHERE id_parent = :parentId
+    )";
+
+    try {
+        tnt::Connection conn;
+        std::vector<uint32_t> ids;
+        for(const auto& it: conn.select(sql, "parentId"_p = parentId)) {
+            ids.emplace_back(it.get<uint32_t>("id"));
+        }
+        return std::move(ids);
+    } catch (const tntdb::NotFound&) {
+        return unexpected(error(Errors::ElementNotFound).format(parentId));
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), parentId));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<std::vector<uint32_t>> selectAssetDeviceLinksSrc(uint32_t elementId)
+{
+    static const std::string sql = R"(
+        SELECT
+            id_asset_device_dest
+        FROM
+            t_bios_asset_link
+        WHERE
+            id_asset_device_src = :src
+    )";
+    try {
+        tnt::Connection conn;
+        std::vector<uint32_t> ids;
+        for(const auto& it: conn.select(sql, "src"_p = elementId)) {
+            ids.emplace_back(it.get<uint32_t>("id_asset_device_dest"));
+        }
+        return std::move(ids);
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
+    }
+}
 
 } // namespace fty::asset::db

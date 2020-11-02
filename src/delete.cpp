@@ -1,8 +1,12 @@
 #include "delete.h"
-#include <fty/rest/audit-log.h>
-#include <fty_common_asset_types.h>
+#include "asset/asset-configure-inform.h"
 #include "asset/asset-db.h"
 #include "asset/asset-manager.h"
+#include "asset/logger.h"
+#include <fty/rest/audit-log.h>
+#include <fty/split.h>
+#include <fty_common_asset_types.h>
+
 
 namespace fty::asset {
 
@@ -14,91 +18,120 @@ unsigned Delete::run()
     }
 
     // sanity check
-    Expected<std::string> id = m_request.queryArg<std::string>("id");
-    {
-        if (!id) {
-            auditError("Request DELETE asset FAILED"_tr);
-            throw rest::Error("request-param-required", "id");
-        }
+    Expected<std::string> id  = m_request.queryArg<std::string>("id");
+    Expected<std::string> ids = m_request.queryArg<std::string>("ids");
+    if (!id && !ids) {
+        auditError("Request DELETE asset FAILED"_tr);
+        throw rest::Error("request-param-required", "id");
+    }
 
-        if (!persist::is_ok_name(id->c_str())) {
-            auditError("Request DELETE asset id {} FAILED"_tr, id);
+    if (id) {
+        return deleteOneAsset(*id);
+    }
+    return deleteAssets(*ids);
+}
+
+unsigned Delete::deleteOneAsset(const std::string& idStr)
+{
+    if (!persist::is_ok_name(idStr.c_str())) {
+        auditError("Request DELETE asset id {} FAILED"_tr, idStr);
+        throw rest::Error("request-param-bad", "id", idStr, "valid asset name"_tr);
+    }
+
+    Expected<int64_t> dbid = db::nameToAssetId(idStr);
+    if (!dbid) {
+        auditError("Request DELETE asset id {} FAILED: {}"_tr, idStr, dbid.error());
+        throw rest::Error(dbid.error());
+    }
+
+    auto res = AssetManager::deleteItem(uint32_t(*dbid));
+    if (!res) {
+        logError(res.error());
+        std::string reason = "Asset is in use, remove children/power source links first."_tr;
+        auditError("Request DELETE asset id {} FAILED"_tr, idStr);
+        throw rest::Error("data-conflict", idStr, reason);
+    }
+
+    std::string agent_name = generateMlmClientId("web.asset_delete");
+    if (auto ret = sendConfigure(*res, persist::asset_operation::DELETE, agent_name)) {
+        m_reply << "{}";
+        auditInfo("Request DELETE asset id {} SUCCESS", idStr);
+        return HTTP_OK;
+    } else {
+        logError(ret.error());
+        std::string msg = ("Error during configuration sending of asset change notification. Consult system log."_tr);
+        auditError("Request DELETE asset id {} FAILED"_tr, idStr);
+        throw rest::Error("internal-error", msg);
+    }
+}
+
+struct Ret : public pack::Node
+{
+    pack::String asset  = FIELD("asset");
+    pack::String status = FIELD("status");
+    pack::String reason = FIELD("reason");
+
+    using pack::Node::Node;
+    META(Ret, asset, status, reason);
+};
+
+unsigned Delete::deleteAssets(const std::string& idsStr)
+{
+    std::vector<std::string> ids = fty::split(idsStr, ",");
+
+    for (const auto& id : ids) {
+        if (!persist::is_ok_name(id.c_str())) {
+            auditError("Request DELETE asset id {} FAILED", id);
             throw rest::Error("request-param-bad", "id", id, "valid asset name"_tr);
         }
     }
 
-    Expected<int64_t> dbid = db::nameToAssetId(*id);
-    if (!dbid) {
-        auditError("Request DELETE asset id {} FAILED: {}"_tr, id, dbid.error());
-        throw rest::Error(dbid.error());
+    std::map<uint32_t, std::string> dbIds;
+    for (const auto& id : ids) {
+        if (auto dbid = db::nameToAssetId(id)) {
+            dbIds.emplace(*dbid, id);
+        } else {
+            logError(dbid.error());
+            auditError("Request DELETE asset id {} FAILED", id);
+            throw rest::Error("request-param-bad", "ids", idsStr, "valid asset name"_tr);
+        }
     }
 
-    AssetManager assetMgr;
+    auto result = AssetManager::deleteItems(dbIds);
 
-    auto res = assetMgr.deleteItem(uint32_t(*dbid));
+    bool someAreOk = false;
+    for (const auto& [name, asset] : result) {
+        if (asset) {
+            someAreOk = true;
+            auditInfo("Request DELETE asset id {} SUCCESS", asset->id);
+        } else {
+            auditError("Request DELETE asset id {} FAILED with error: {}", name, asset.error());
+        }
+    }
+
+    pack::ObjectList<Ret> ret;
+    std::string           agent_name = generateMlmClientId("web.asset_delete");
+
+    for (const auto& [name, asset] : result) {
+        if (asset) {
+            sendConfigure(*asset, persist::asset_operation::DELETE, agent_name);
+        }
+        auto& retVal  = ret.append();
+        retVal.asset  = asset->name;
+        retVal.status = asset ? "OK" : "ERROR";
+        if (!asset) {
+            retVal.reason = asset.error();
+        }
+    }
+
+    m_reply << *pack::json::serialize(ret);
+
+    if (!someAreOk) {
+        return HTTP_CONFLICT;
+    }
+
+    auditInfo("Request DELETE assets ids {} SUCCESS", idsStr);
     return HTTP_OK;
 }
 
 } // namespace fty::asset
-
-
-#if 0
-#include "shared/configure_inform.h"
-#include "shared/data.h"
-#include <fty_common_db_asset.h>
-#include <fty_common_macros.h>
-#include <fty_common_rest_audit_log.h>
-#include <fty_common_rest_helpers.h>
-#include <sys/types.h>
-#include <unistd.h>
-</%pre>
-<%thread scope="global">
-asset_manager     asset_mgr;
-</%thread>
-<%request scope="global">
-UserInfo user;
-bool database_ready;
-</%request>
-<%cpp>
-{
-
-    // delete it
-    db_a_elmnt_t row;
-    auto ret = asset_mgr.delete_item (dbid, row);
-    if ( ret.status == 0 ) {
-        if ( ret.errsubtype == DB_ERROR_NOTFOUND ) {
-            log_error_audit ("Request DELETE asset id %s FAILED", id.c_str ());
-            http_die ("element-not-found", checked_id.c_str ());
-        }
-        else {
-            std::string reason = TRANSLATE_ME ("Asset is in use, remove children/power source links first.");
-            log_error_audit ("Request DELETE asset id %s FAILED", id.c_str ());
-            http_die ("data-conflict",  checked_id.c_str (), reason.c_str ());
-        }
-    }
-    // here we are -> delete was successful
-    // ATTENTION:  1. sending messages is "hidden functionality" from user
-    //             2. if any error would occur during the sending message,
-    //                user will never know if element was actually deleted
-    //                or not
-
-    // this code can be executed in multiple threads -> agent's name should
-    // be unique at the every moment
-    std::string agent_name = utils::generate_mlm_client_id ("web.asset_delete");
-    try {
-        send_configure (row, persist::asset_operation::DELETE, agent_name);
-</%cpp>
-{}
-<%cpp>
-        log_info_audit ("Request DELETE asset id %s SUCCESS", id.c_str ());
-        return HTTP_OK;
-    }
-    catch (const std::runtime_error &e) {
-        log_error ("%s", e.what ());
-        std::string msg = TRANSLATE_ME ("Error during configuration sending of asset change notification. Consult system log.");
-        log_error_audit ("Request DELETE asset id %s FAILED", id.c_str ());
-        http_die ("internal-error", msg.c_str ());
-    }
-}
-</%cpp>
-#endif
