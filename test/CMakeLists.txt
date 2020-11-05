@@ -1,4 +1,4 @@
-include(CTest)
+project(asset-test)
 
 etn_test(asset-test
     SOURCES

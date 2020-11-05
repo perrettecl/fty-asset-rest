@@ -68,6 +68,25 @@ TEST_CASE("Select asset")
         CHECK(res->typeId == persist::type_to_typeid("device"));
     }
 
+    SECTION("selectAssetElementWebById/wrong")
+    {
+        auto res = fty::asset::db::selectAssetElementWebById(uint32_t(-1));
+        CHECK(!res);
+        CHECK(res.error() == fmt::format("Element '{}' not found.", uint32_t(-1)));
+    }
+
+    SECTION("selectExtAttributes")
+    {
+        auto res = fty::asset::db::selectExtAttributes(el.id);
+        if (!res) {
+            FAIL(res.error());
+        }
+        REQUIRE(res);
+        CHECK(res->size() == 1);
+        CHECK((*res)["name"].value == "Device name");
+        CHECK((*res)["name"].readOnly == true);
+    }
+
 
     // Clean up
     {
