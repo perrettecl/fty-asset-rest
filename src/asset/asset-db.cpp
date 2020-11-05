@@ -126,14 +126,14 @@ Expected<AssetElement> selectAssetElementByName(const std::string& elementName)
 {
     static const std::string nameSql = R"(
         SELECT
-            v.name, v.id_parent, v.status, v.priority, v.id, v.id_type
+            v.name, v.id_parent, v.status, v.priority, v.id, v.id_type, v.id_subtype
         FROM
             v_bios_asset_element v
         WHERE v.name = :name
     )";
 
     static const std::string extNameSql = R"(
-        SELECT v.name, v.id_parent, v.status, v.priority, v.id, v.id_type
+        SELECT v.name, v.id_parent, v.status, v.priority, v.id, v.id_type, v.id_subtype
         FROM
             v_bios_asset_element AS v
         LEFT JOIN
@@ -165,6 +165,7 @@ Expected<AssetElement> selectAssetElementByName(const std::string& elementName)
         row.get("priority", el.priority);
         row.get("id", el.id);
         row.get("id_type", el.typeId);
+        row.get("id_subtype", el.subtypeId);
 
         return std::move(el);
     } catch (const tntdb::NotFound&) {
@@ -332,7 +333,7 @@ Expected<uint> updateAssetElement(tnt::Connection& db, uint32_t elementId, uint3
             "status"_p    = status,
             "priority"_p  = priority,
             "assetTag"_p  = assetTag,
-            "parentId"_p  = parentId ? parentId : tnt::empty<uint32_t>()
+            "parentId"_p  = nullable(parentId, parentId)// : std::nullopt//tnt::empty<uint32_t>
         );
         // clang-format on
 
@@ -388,10 +389,10 @@ Expected<uint> insertIntoAssetExtAttributes(
     try {
         auto st = conn.prepare(sql);
 
-        int count = 0;
+        size_t count = 0;
         for (const auto& [key, value] : attributes) {
             // clang-format off
-            st.bind(count++,
+            st.bindMulti(count++,
                 "keytag"_p           = key,
                 "value"_p            = value,
                 "id_asset_element"_p = elementId,
@@ -453,7 +454,7 @@ Expected<uint> insertElementIntoGroups(tnt::Connection& conn, const std::set<uin
         size_t count = 0;
         for (uint32_t gid : groups) {
             // clang-format off
-            st.bind(count++,
+            st.bindMulti(count++,
                 "gid"_p       = gid,
                 "elementId"_p = elementId
             );
@@ -476,7 +477,7 @@ Expected<uint> insertElementIntoGroups(tnt::Connection& conn, const std::set<uin
 
 // =====================================================================================================================
 
-Expected<int64_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElement& element, bool update)
+Expected<uint32_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElement& element, bool update)
 {
     if (!persist::is_ok_name(element.name.c_str())) {
         return unexpected("wrong element name"_tr);
@@ -517,12 +518,12 @@ Expected<int64_t> insertIntoAssetElement(tnt::Connection& conn, const AssetEleme
             "status"_p    = element.status,
             "priority"_p  = element.priority,
             "assetTag"_p  = element.assetTag,
-            "parentId"_p  = element.parentId ? element.parentId : tnt::empty<uint32_t>()
+            "parentId"_p  = nullable(element.parentId, element.parentId)
         );
         // clang-format on
         uint affectedRows = st.execute();
 
-        int64_t rowid = conn.lastInsertId();
+        uint32_t rowid = uint32_t(conn.lastInsertId());
 
         if (!update) {
             // clang-format off
@@ -638,8 +639,8 @@ Expected<int64_t> insertIntoAssetLink(tnt::Connection& conn, const AssetLink& li
             "src"_p      = link.src,
             "dest"_p     = link.dest,
             "linktype"_p = link.type,
-            "out"_p      = link.srcOut.empty() ? tnt::empty<std::string> : link.srcOut,
-            "in"_p       = link.destIn.empty() ? tnt::empty<std::string> : link.destIn
+            "out"_p      = nullable(!link.srcOut.empty(), link.srcOut),
+            "in"_p       = nullable(!link.destIn.empty(), link.destIn)
         );
         // clang-format on
 

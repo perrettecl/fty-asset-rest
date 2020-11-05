@@ -34,7 +34,7 @@ inline Translate error(Errors err)
     case Errors::ElementNotFound:
         return "Element '{}' not found."_tr;
     case Errors::ExceptionForElement:
-        return "exception caught {} for element '{}"_tr;
+        return "exception caught {} for element '{}'"_tr;
     }
     return "Unknown error"_tr;
 }

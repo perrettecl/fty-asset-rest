@@ -16,10 +16,19 @@
 
 
 <mapping>
-  <target>asset_list@libfty_rest</target>
+  <target>asset/list@libfty_rest</target>
   <url>^/api/v1/asset/(datacenter|room|row|rack|group|device)s.*$</url>
   <args>
     <type>$1</type>
+  </args>
+</mapping>
+
+<mapping>
+  <target>asset/delete@libfty_rest</target>
+  <url>^/api/v1/asset/(.*)$</url>
+  <method>DELETE</method>
+  <args>
+    <id>$1</id>
   </args>
 </mapping>
 
@@ -63,14 +72,6 @@
   </args>
 </mapping>
 
-<mapping>
-  <target>asset_DELETE@libfty_rest</target>
-  <url>^/api/v1/asset/(.*)$</url>
-  <method>DELETE</method>
-  <args>
-    <id>$1</id>
-  </args>
-</mapping>
 
 <mapping>
   <target>asset_PUT@libfty_rest</target>

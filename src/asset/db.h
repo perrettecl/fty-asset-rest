@@ -15,44 +15,16 @@ struct Arg
 {
     std::string_view name;
     T                value;
+    bool             isNull = false;
 };
 
-template <>
-struct Arg<void>
-{
-    std::string_view name;
-};
-
-
-namespace internal {
-
-    template <class T>
-    struct Empty
-    {
-        using is_empty = std::true_type;
-
-        constexpr operator T() const noexcept
-        {
-            return T{};
-        }
-        constexpr T operator()() const noexcept
-        {
-            return T{};
-        }
-    };
-
-} // namespace internal
-
-template <typename T>
-constexpr internal::Empty<T> empty{};
-
-template <typename T, typename = void>
-struct is_empty : std::false_type
+template <class, template <class> class>
+struct is_instance : public std::false_type
 {
 };
 
-template <typename T>
-struct is_empty<T, std::conditional_t<false, fty::is_cont_helper<typename T::is_empty>, void>> : public std::true_type
+template <class T, template <class> class U>
+struct is_instance<U<T>, U> : public std::true_type
 {
 };
 
@@ -110,7 +82,7 @@ private:
     tntdb::Row m_row;
 };
 
-// =================================================================================================================
+// =====================================================================================================================
 
 class Rows
 {
@@ -176,12 +148,13 @@ public:
     Statement& bind(Arg<TArg>&& arg);
 
     template <typename TArg, typename... TArgs>
-    Statement& bind(size_t count, TArg&& val, TArgs&&... args);
+    Statement& bindMulti(size_t count, TArg&& val, TArgs&&... args);
 
     template <typename TArg>
-    Statement& bind(size_t count, Arg<TArg>&& arg);
+    Statement& bindMulti(size_t count, Arg<TArg>&& arg);
 
     Statement& bind();
+
 public:
     Row  selectRow() const;
     Rows select() const;
@@ -194,6 +167,8 @@ private:
     friend class Connection;
 };
 
+// =====================================================================================================================
+
 class Transaction
 {
 public:
@@ -201,6 +176,7 @@ public:
 
     void commit();
     void rollback();
+
 private:
     tntdb::Transaction m_trans;
 };
@@ -238,8 +214,12 @@ struct Arg
     template <typename T>
     auto operator=(T&& value) const
     {
-        if constexpr (std::is_empty<T>::value) {
-            return tnt::Arg<void>{str};
+        if constexpr (is_instance<T, std::optional>::value) {
+            if (value) {
+                return tnt::Arg<typename T::value_type>{str, std::forward<typename T::value_type>(*value)};
+            } else {
+                return tnt::Arg<typename T::value_type>{str, typename T::value_type{}, true};
+            }
         } else {
             return tnt::Arg<T>{str, std::forward<T>(value)};
         }
@@ -253,12 +233,21 @@ constexpr tnt::internal::Arg operator"" _p(const char* s, size_t n)
     return {{s, n}};
 }
 
+template <typename T>
+std::optional<std::decay_t<T>> nullable(bool cond, T&& value)
+{
+    if (cond) {
+        return std::optional<std::decay_t<T>>(value);
+    }
+    return std::nullopt;
+}
+
 // =====================================================================================================================
 // Connection impl
 // =====================================================================================================================
 
 inline tnt::Connection::Connection()
-    : m_connection(tntdb::connectCached(DBConn::url))
+    : m_connection(tntdb::connectCached(getenv("DBURL") ? getenv("DBURL") : DBConn::url))
 {
 }
 
@@ -312,7 +301,7 @@ inline tnt::Statement& tnt::Statement::bind(TArg&& val, TArgs&&... args)
 template <typename TArg>
 inline tnt::Statement& tnt::Statement::bind(Arg<TArg>&& arg)
 {
-    if constexpr (std::is_same_v<TArg, void>) {
+    if (arg.isNull) {
         m_st.setNull(arg.name.data());
     } else {
         m_st.set(arg.name.data(), arg.value);
@@ -327,17 +316,17 @@ inline tnt::Statement& tnt::Statement::bind()
 
 
 template <typename TArg, typename... TArgs>
-inline tnt::Statement& tnt::Statement::bind(size_t count, TArg&& val, TArgs&&... args)
+inline tnt::Statement& tnt::Statement::bindMulti(size_t count, TArg&& val, TArgs&&... args)
 {
-    bind(count, std::forward<TArg>(val));
-    bind(count, std::forward<TArgs>(args)...);
+    bindMulti(count, std::forward<TArg>(val));
+    bindMulti(count, std::forward<TArgs>(args)...);
     return *this;
 }
 
 template <typename TArg>
-inline tnt::Statement& tnt::Statement::bind(size_t count, Arg<TArg>&& arg)
+inline tnt::Statement& tnt::Statement::bindMulti(size_t count, Arg<TArg>&& arg)
 {
-    if constexpr (std::is_same_v<TArg, void>) {
+    if (arg.isNull) {
         m_st.setNull(fmt::format("{}_{}", arg.name, count));
     } else {
         m_st.set(fmt::format("{}_{}", arg.name, count), arg.value);
@@ -373,32 +362,36 @@ inline tnt::Statement::Statement(const tntdb::Statement& st)
 template <typename T>
 inline T tnt::Row::get(const std::string& col) const
 {
-    if constexpr (std::is_same_v<T, std::string>) {
-        return m_row.getString(col);
-    } else if constexpr (std::is_same_v<T, bool>) {
-        return m_row.getBool(col);
-    } else if constexpr (std::is_same_v<T, int64_t>) {
-        return m_row.getInt64(col);
-    } else if constexpr (std::is_same_v<T, int32_t>) {
-        return m_row.getInt32(col);
-    } else if constexpr (std::is_same_v<T, int16_t>) {
-        return m_row.getInt(col);
-    } else if constexpr (std::is_same_v<T, int8_t>) {
-        return int8_t(m_row.getInt(col));
-    } else if constexpr (std::is_same_v<T, uint64_t>) {
-        return m_row.getUnsigned64(col);
-    } else if constexpr (std::is_same_v<T, uint32_t>) {
-        return m_row.getUnsigned32(col);
-    } else if constexpr (std::is_same_v<T, uint16_t>) {
-        return uint16_t(m_row.getUnsigned(col));
-    } else if constexpr (std::is_same_v<T, uint8_t>) {
-        return uint8_t(m_row.getUnsigned(col));
-    } else if constexpr (std::is_same_v<T, float>) {
-        return m_row.getFloat(col);
-    } else if constexpr (std::is_same_v<T, double>) {
-        return m_row.getDouble(col);
-    } else {
-        static_assert(fty::always_false<T>, "Unsupported type");
+    try {
+        if constexpr (std::is_same_v<T, std::string>) {
+            return m_row.getString(col);
+        } else if constexpr (std::is_same_v<T, bool>) {
+            return m_row.getBool(col);
+        } else if constexpr (std::is_same_v<T, int64_t>) {
+            return m_row.getInt64(col);
+        } else if constexpr (std::is_same_v<T, int32_t>) {
+            return m_row.getInt32(col);
+        } else if constexpr (std::is_same_v<T, int16_t>) {
+            return m_row.getInt(col);
+        } else if constexpr (std::is_same_v<T, int8_t>) {
+            return int8_t(m_row.getInt(col));
+        } else if constexpr (std::is_same_v<T, uint64_t>) {
+            return m_row.getUnsigned64(col);
+        } else if constexpr (std::is_same_v<T, uint32_t>) {
+            return m_row.getUnsigned32(col);
+        } else if constexpr (std::is_same_v<T, uint16_t>) {
+            return uint16_t(m_row.getUnsigned(col));
+        } else if constexpr (std::is_same_v<T, uint8_t>) {
+            return uint8_t(m_row.getUnsigned(col));
+        } else if constexpr (std::is_same_v<T, float>) {
+            return m_row.getFloat(col);
+        } else if constexpr (std::is_same_v<T, double>) {
+            return m_row.getDouble(col);
+        } else {
+            static_assert(fty::always_false<T>, "Unsupported type");
+        }
+    } catch (const tntdb::NullValue&/* e*/) {
+        return T{};
     }
 }
 
@@ -512,8 +505,7 @@ inline tnt::ConstIterator tnt::ConstIterator::operator-(difference_type n) const
     return it;
 }
 
-inline tnt::ConstIterator::difference_type tnt::ConstIterator::operator-(
-    const ConstIterator& it) const
+inline tnt::ConstIterator::difference_type tnt::ConstIterator::operator-(const ConstIterator& it) const
 {
     return tnt::ConstIterator::difference_type(m_offset - it.m_offset);
 }
@@ -556,9 +548,10 @@ inline tnt::Rows::Rows(const tntdb::Result& rows)
 // Transaction impl
 // =====================================================================================================================
 
-inline tnt::Transaction::Transaction(Connection& con):
-    m_trans(tntdb::Transaction(con.m_connection))
-{}
+inline tnt::Transaction::Transaction(Connection& con)
+    : m_trans(tntdb::Transaction(con.m_connection))
+{
+}
 
 inline void tnt::Transaction::commit()
 {
@@ -569,4 +562,3 @@ inline void tnt::Transaction::rollback()
 {
     m_trans.rollback();
 }
-

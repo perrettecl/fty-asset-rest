@@ -77,27 +77,27 @@ using SelectCallback = std::function<void(const tnt::Row&)>;
 /// Converts asset internal name to database id
 /// @param assetName internal name of the asset
 /// @returns asset is or error
-Expected<int64_t> nameToAssetId(const std::string& assetName);
+Expected<int64_t> nameToAssetId(const std::string& assetName); //!test
 
 /// Converts database id to internal name and extended (unicode) name
 /// @param assetId asset id
 /// returns pair of name and extended name or error
-Expected<std::pair<std::string, std::string>> idToNameExtName(uint32_t assetId);
+Expected<std::pair<std::string, std::string>> idToNameExtName(uint32_t assetId); //!test
 
 /// Converts asset's extended name to its internal name
 /// @param assetExtName asset external name
 /// returns internal name or error
-Expected<std::string> extNameToAssetName(const std::string& assetExtName);
+Expected<std::string> extNameToAssetName(const std::string& assetExtName); //!test
 
 /// Converts asset's extended name to id
 /// @param assetExtName asset external name
 /// returns id or error
-Expected<int64_t> extNameToAssetId(const std::string& assetExtName);
+Expected<int64_t> extNameToAssetId(const std::string& assetExtName); //!test
 
 /// select basic information about asset element by name
 /// @param name asset internal or external name
 /// return @ref AssetElement or error
-Expected<AssetElement> selectAssetElementByName(const std::string& name);
+Expected<AssetElement> selectAssetElementByName(const std::string& name);  //!test
 
 /// Selects all data about asset in WebAssetElement
 /// @param elementId asset element id
@@ -157,7 +157,7 @@ Expected<uint> deleteAssetElementFromAssetGroups(tnt::Connection& conn, uint32_t
 /// @param element element to insert
 /// @param update update or insert flag
 /// @returns count of affected rows or error
-Expected<int64_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElement& element, bool update);
+Expected<uint32_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElement& element, bool update);
 
 /// Inserts asset into groups
 /// @param conn database established connection

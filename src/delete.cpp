@@ -4,6 +4,7 @@
 #include "asset/asset-manager.h"
 #include "asset/logger.h"
 #include <fty/rest/audit-log.h>
+#include <fty/rest/component.h>
 #include <fty/split.h>
 #include <fty_common_asset_types.h>
 
@@ -135,3 +136,5 @@ unsigned Delete::deleteAssets(const std::string& idsStr)
 }
 
 } // namespace fty::asset
+
+registerHandler(fty::asset::Delete)

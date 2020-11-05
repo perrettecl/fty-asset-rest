@@ -56,6 +56,8 @@ etn_target(shared ${PROJECT_NAME}
         src/list.h
         src/delete.cpp
         src/delete.h
+        src/import.cpp
+        src/import.h
 
     USES
         fty-cmake-rest
@@ -76,3 +78,8 @@ etn_configure_file(
 )
 
 ########################################################################################################################
+
+if (BUILD_TESTING)
+    add_subdirectory(test)
+endif()
+
