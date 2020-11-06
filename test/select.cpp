@@ -31,6 +31,30 @@ TEST_CASE("Select asset")
         REQUIRE(*ret > 0);
     }
 
+    fty::asset::db::AssetElement gr;
+    gr.name      = "MyGroup";
+    gr.status    = "active";
+    gr.priority  = 1;
+    gr.typeId    = persist::type_to_typeid("group");
+
+    {
+        auto ret = fty::asset::db::insertIntoAssetElement(conn, gr, true);
+        if (!ret) {
+            FAIL(ret.error());
+        }
+        REQUIRE(*ret > 0);
+        gr.id = *ret;
+    }
+
+    {
+        auto ret = fty::asset::db::insertElementIntoGroups(conn, {gr.id}, el.id);
+        if (!ret) {
+            FAIL(ret.error());
+        }
+        REQUIRE(*ret > 0);
+    }
+
+
     SECTION("selectAssetElementByName")
     {
         auto res = fty::asset::db::selectAssetElementByName("device");
@@ -87,8 +111,66 @@ TEST_CASE("Select asset")
         CHECK((*res)["name"].readOnly == true);
     }
 
+    SECTION("selectAssetElementGroups")
+    {
+        auto res = fty::asset::db::selectAssetElementGroups(el.id);
+        if (!res) {
+            FAIL(res.error());
+        }
+        REQUIRE(res);
+        CHECK(res->size() == 1);
+        CHECK((*res)[gr.id] == "MyGroup");
+    }
+
+    SECTION("selectAssetElementGroups/wrong")
+    {
+        auto res = fty::asset::db::selectAssetElementGroups(uint32_t(-1));
+        if (!res) {
+            FAIL(res.error());
+        }
+        REQUIRE(res);
+        CHECK(res->size() == 0);
+    }
+
+    SECTION("selectAssetElementSuperParent")
+    {
+        auto res = fty::asset::db::selectAssetElementSuperParent(el.id, [](const auto& /*row*/){});
+        if (!res) {
+            FAIL(res.error());
+        }
+        REQUIRE(res);
+    }
+
+    SECTION("countKeytag")
+    {
+        auto res = fty::asset::db::countKeytag("name", "Device name");
+        if (!res) {
+            FAIL(res.error());
+        }
+        REQUIRE(res);
+        CHECK(*res == 1);
+    }
+
+    SECTION("selectShortElements")
+    {
+        auto res = fty::asset::db::selectShortElements(persist::type_to_typeid("device"), persist::subtype_to_subtypeid("ups"));
+        if (!res) {
+            FAIL(res.error());
+        }
+        REQUIRE(res);
+        CHECK(res->size() == 1);
+    }
 
     // Clean up
+    {
+        auto res = fty::asset::db::deleteAssetGroupLinks(conn, gr.id);
+        if (!res) {
+            FAIL(res.error());
+        }
+        CHECK(res);
+        CHECK(res > 0);
+    }
+
     {
         auto res = fty::asset::db::deleteAssetExtAttributesWithRo(conn, el.id, true);
         if (!res) {
@@ -100,6 +182,14 @@ TEST_CASE("Select asset")
 
     {
         auto res = fty::asset::db::deleteAssetElement(conn, el.id);
+        if (!res) {
+            FAIL(res.error());
+        }
+        REQUIRE(*res > 0);
+    }
+
+    {
+        auto res = fty::asset::db::deleteAssetElement(conn, gr.id);
         if (!res) {
             FAIL(res.error());
         }

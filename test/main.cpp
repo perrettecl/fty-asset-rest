@@ -70,6 +70,16 @@ static void createDB()
     )");
 
     conn.execute(R"(
+        INSERT INTO t_bios_asset_element_type (name)
+        VALUES  ("group"),
+                ("datacenter"),
+                ("room"),
+                ("row"),
+                ("rack"),
+                ("device");
+    )");
+
+    conn.execute(R"(
         CREATE TABLE t_bios_asset_device_type(
             id_asset_device_type TINYINT UNSIGNED   NOT NULL AUTO_INCREMENT,
             name                 VARCHAR(50)        NOT NULL,
@@ -135,16 +145,6 @@ static void createDB()
     )");
 
     conn.execute(R"(
-        INSERT INTO t_bios_asset_element_type (name)
-        VALUES  ("group"),
-                ("datacenter"),
-                ("room"),
-                ("row"),
-                ("rack"),
-                ("device");
-    )");
-
-    conn.execute(R"(
         INSERT INTO t_bios_asset_device_type (name)
         VALUES  ("ups"),
                 ("genset"),
@@ -179,12 +179,13 @@ static void createDB()
                     v1.id_subtype,
                     v1.id_parent,
                     v2.id_type AS id_parent_type,
+                    v2.name AS parent_name,
                     v1.status,
                     v1.priority,
                     v1.asset_tag
-            FROM t_bios_asset_element v1
-            LEFT JOIN  t_bios_asset_element v2
-                ON (v1.id_parent = v2.id_asset_element) ;
+                FROM t_bios_asset_element v1
+                LEFT JOIN  t_bios_asset_element v2
+                    ON (v1.id_parent = v2.id_asset_element) ;
     )");
 
     conn.execute(R"(
@@ -216,16 +217,279 @@ static void createDB()
                 LEFT JOIN t_bios_asset_device_type v4
                     ON (v4.id_asset_device_type = t1.id_subtype);
     )");
+
+    conn.execute(R"(
+        CREATE TABLE t_bios_asset_group_relation (
+          id_asset_group_relation INT UNSIGNED NOT NULL AUTO_INCREMENT,
+          id_asset_group          INT UNSIGNED NOT NULL,
+          id_asset_element        INT UNSIGNED NOT NULL,
+
+          PRIMARY KEY (id_asset_group_relation),
+
+          INDEX FK_ASSETGROUPRELATION_ELEMENT_idx (id_asset_element ASC),
+          INDEX FK_ASSETGROUPRELATION_GROUP_idx   (id_asset_group   ASC),
+
+          UNIQUE INDEX `UI_t_bios_asset_group_relation` (`id_asset_group`, `id_asset_element` ASC),
+
+          CONSTRAINT FK_ASSETGROUPRELATION_ELEMENT
+            FOREIGN KEY (id_asset_element)
+            REFERENCES t_bios_asset_element (id_asset_element)
+            ON DELETE RESTRICT,
+
+          CONSTRAINT FK_ASSETGROUPRELATION_GROUP
+            FOREIGN KEY (id_asset_group)
+            REFERENCES t_bios_asset_element (id_asset_element)
+            ON DELETE RESTRICT
+        );
+    )");
+
+    conn.execute(R"(
+        CREATE VIEW v_bios_asset_group_relation AS
+            SELECT * FROM t_bios_asset_group_relation;
+    )");
+
+    conn.execute(R"(
+        CREATE TABLE t_bios_asset_link_type(
+          id_asset_link_type   TINYINT UNSIGNED   NOT NULL AUTO_INCREMENT,
+          name                 VARCHAR(50)        NOT NULL,
+
+          PRIMARY KEY (id_asset_link_type),
+          UNIQUE INDEX `UI_t_bios_asset_link_type_name` (`name` ASC)
+
+        );
+    )");
+
+    conn.execute(R"(
+        INSERT INTO t_bios_asset_link_type (name) VALUES ("power chain");
+    )");
+
+    conn.execute(R"(
+        CREATE TABLE t_bios_asset_link (
+          id_link               INT UNSIGNED        NOT NULL AUTO_INCREMENT,
+          id_asset_device_src   INT UNSIGNED        NOT NULL,
+          src_out               CHAR(4),
+          id_asset_device_dest  INT UNSIGNED        NOT NULL,
+          dest_in               CHAR(4),
+          id_asset_link_type    TINYINT UNSIGNED    NOT NULL,
+
+          PRIMARY KEY (id_link),
+
+          INDEX FK_ASSETLINK_SRC_idx  (id_asset_device_src    ASC),
+          INDEX FK_ASSETLINK_DEST_idx (id_asset_device_dest   ASC),
+          INDEX FK_ASSETLINK_TYPE_idx (id_asset_link_type     ASC),
+
+          CONSTRAINT FK_ASSETLINK_SRC
+            FOREIGN KEY (id_asset_device_src)
+            REFERENCES t_bios_asset_element(id_asset_element)
+            ON DELETE RESTRICT,
+
+          CONSTRAINT FK_ASSETLINK_DEST
+            FOREIGN KEY (id_asset_device_dest)
+            REFERENCES t_bios_asset_element(id_asset_element)
+            ON DELETE RESTRICT,
+
+          CONSTRAINT FK_ASSETLINK_TYPE
+            FOREIGN KEY (id_asset_link_type)
+            REFERENCES t_bios_asset_link_type(id_asset_link_type)
+            ON DELETE RESTRICT
+
+        );
+    )");
+
+    conn.execute(R"(
+        CREATE VIEW v_bios_asset_link AS
+            SELECT  v1.id_link,
+                    v1.src_out,
+                    v1.dest_in,
+                    v1.id_asset_link_type,
+                    v1.id_asset_device_src AS id_asset_element_src,
+                    v1.id_asset_device_dest AS id_asset_element_dest
+            FROM t_bios_asset_link v1;
+    )");
+
+    conn.execute(R"(
+        CREATE VIEW v_web_asset_link AS
+            SELECT
+                v1.id_link,
+                v1.id_asset_link_type,
+                t3.name AS link_name,
+                v1.id_asset_element_src,
+                t1.name AS src_name,
+                v1.id_asset_element_dest,
+                t2.name AS dest_name,
+                v1.src_out,
+                v1.dest_in
+            FROM
+                 v_bios_asset_link v1
+            JOIN t_bios_asset_element t1
+                ON v1.id_asset_element_src=t1.id_asset_element
+            JOIN t_bios_asset_element t2
+                ON v1.id_asset_element_dest=t2.id_asset_element
+            JOIN t_bios_asset_link_type t3
+                ON v1.id_asset_link_type=t3.id_asset_link_type;
+    )");
+
+    conn.execute(R"(
+        CREATE VIEW v_bios_asset_device AS
+            SELECT  t1.id_asset_element,
+                    t2.id_asset_device_type,
+                    t2.name
+            FROM t_bios_asset_element t1
+                LEFT JOIN t_bios_asset_device_type t2
+                ON (t1.id_subtype = t2.id_asset_device_type);
+    )");
+
+    conn.execute(R"(
+        CREATE VIEW v_bios_asset_element_super_parent AS
+        SELECT v1.id as id_asset_element,
+               v1.id_parent AS id_parent1,
+               v2.id_parent AS id_parent2,
+               v3.id_parent AS id_parent3,
+               v4.id_parent AS id_parent4,
+               v5.id_parent AS id_parent5,
+               v6.id_parent AS id_parent6,
+               v7.id_parent AS id_parent7,
+               v8.id_parent AS id_parent8,
+               v9.id_parent AS id_parent9,
+               v10.id_parent AS id_parent10,
+               v1.parent_name AS name_parent1,
+               v2.parent_name AS name_parent2,
+               v3.parent_name AS name_parent3,
+               v4.parent_name AS name_parent4,
+               v5.parent_name AS name_parent5,
+               v6.parent_name AS name_parent6,
+               v7.parent_name AS name_parent7,
+               v8.parent_name AS name_parent8,
+               v9.parent_name AS name_parent9,
+               v10.parent_name AS name_parent10,
+               v2.id_type AS id_type_parent1,
+               v3.id_type AS id_type_parent2,
+               v4.id_type AS id_type_parent3,
+               v5.id_type AS id_type_parent4,
+               v6.id_type AS id_type_parent5,
+               v7.id_type AS id_type_parent6,
+               v8.id_type AS id_type_parent7,
+               v9.id_type AS id_type_parent8,
+               v10.id_type AS id_type_parent9,
+               v11.id_type AS id_type_parent10,
+               v2.id_subtype AS id_subtype_parent1,
+               v3.id_subtype AS id_subtype_parent2,
+               v4.id_subtype AS id_subtype_parent3,
+               v5.id_subtype AS id_subtype_parent4,
+               v6.id_subtype AS id_subtype_parent5,
+               v7.id_subtype AS id_subtype_parent6,
+               v8.id_subtype AS id_subtype_parent7,
+               v9.id_subtype AS id_subtype_parent8,
+               v10.id_subtype AS id_subtype_parent9,
+               v11.id_subtype AS id_subtype_parent10,
+               v1.name ,
+               v12.name AS type_name,
+               v12.id_asset_device_type,
+               v1.status,
+               v1.asset_tag,
+               v1.priority,
+               v1.id_type
+        FROM v_bios_asset_element v1
+             LEFT JOIN v_bios_asset_element v2
+                ON (v1.id_parent = v2.id)
+             LEFT JOIN v_bios_asset_element v3
+                ON (v2.id_parent = v3.id)
+             LEFT JOIN v_bios_asset_element v4
+                ON (v3.id_parent = v4.id)
+             LEFT JOIN v_bios_asset_element v5
+                ON (v4.id_parent = v5.id)
+             LEFT JOIN v_bios_asset_element v6
+                ON (v5.id_parent = v6.id)
+             LEFT JOIN v_bios_asset_element v7
+                ON (v6.id_parent = v7.id)
+             LEFT JOIN v_bios_asset_element v8
+                ON (v7.id_parent = v8.id)
+             LEFT JOIN v_bios_asset_element v9
+                ON (v8.id_parent = v9.id)
+             LEFT JOIN v_bios_asset_element v10
+                ON (v9.id_parent = v10.id)
+             LEFT JOIN v_bios_asset_element v11
+                ON (v10.id_parent = v11.id)
+             INNER JOIN t_bios_asset_device_type v12
+                ON (v12.id_asset_device_type = v1.id_subtype);
+    )");
+
+    conn.execute(R"(
+        CREATE TABLE t_bios_device_type(
+            id_device_type      TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            name                VARCHAR(50)      NOT NULL,
+
+            PRIMARY KEY(id_device_type),
+
+            UNIQUE INDEX `UI_t_bios_device_type_name` (`name` ASC)
+
+        ) AUTO_INCREMENT = 1;
+    )");
+
+    conn.execute(R"(
+        INSERT INTO t_bios_device_type (name) VALUES
+            ("not_classified"),
+            ("ups"),
+            ("epdu"),
+            ("server");
+    )");
+
+    conn.execute(R"(
+        CREATE VIEW v_bios_device_type AS
+            SELECT id_device_type id, name FROM t_bios_device_type;
+    )");
+
+    conn.execute(R"(
+        CREATE TABLE t_bios_discovered_device(
+            id_discovered_device    SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            name                    VARCHAR(50)       NOT NULL,
+            id_device_type          TINYINT UNSIGNED  NOT NULL,
+
+            PRIMARY KEY(id_discovered_device),
+
+            INDEX(id_device_type),
+
+            UNIQUE INDEX `UI_t_bios_discovered_device_name` (`name` ASC),
+
+            FOREIGN KEY(id_device_type)
+            REFERENCES t_bios_device_type(id_device_type)
+                ON DELETE RESTRICT
+        );
+    )");
+
+    conn.execute(R"(
+        CREATE TABLE t_bios_monitor_asset_relation(
+            id_ma_relation        INT UNSIGNED      NOT NULL AUTO_INCREMENT,
+            id_discovered_device  SMALLINT UNSIGNED NOT NULL,
+            id_asset_element      INT UNSIGNED      NOT NULL,
+
+            PRIMARY KEY(id_ma_relation),
+
+            INDEX(id_discovered_device),
+            INDEX(id_asset_element),
+
+            FOREIGN KEY (id_discovered_device)
+                REFERENCEs t_bios_discovered_device(id_discovered_device)
+                ON DELETE RESTRICT,
+
+            FOREIGN KEY (id_asset_element)
+                REFERENCEs t_bios_asset_element(id_asset_element)
+                ON DELETE RESTRICT
+        );
+    )");
 }
 
 int main(int argc, char* argv[])
 {
     std::stringstream ss;
-    ss << std::this_thread::get_id();
-    std::string pid = ss.str()+"_"+std::to_string(random());
+    ss << getpid();
+    std::string pid = ss.str();
 
     std::string path = "/tmp/mysql-"+pid;
     std::string sock = "/tmp/mysql-"+pid+".sock";
+
+    std::cerr << "path: " << path << std::endl;
+    std::cerr << "sock: " << sock << std::endl;
 
     std::filesystem::create_directory(path);
 

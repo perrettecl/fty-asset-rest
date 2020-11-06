@@ -447,7 +447,7 @@ Expected<uint> insertElementIntoGroups(tnt::Connection& conn, const std::set<uin
             (id_asset_group, id_asset_element)
          VALUES {}
     )",
-        tnt::multiInsert({"gid, elementId"}, groups.size()));
+        tnt::multiInsert({"gid", "elementId"}, groups.size()));
 
     try {
         auto   st    = conn.prepare(sql);
