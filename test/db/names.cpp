@@ -1,5 +1,5 @@
-#include "src/asset/asset-db.h"
-#include "src/asset/db.h"
+#include "asset/asset-db.h"
+#include "asset/db.h"
 #include <catch2/catch.hpp>
 #include <fty_common_asset_types.h>
 

@@ -45,7 +45,7 @@ unsigned Delete::deleteOneAsset(const std::string& idStr)
         throw rest::Error(dbid.error());
     }
 
-    auto res = AssetManager::deleteItem(uint32_t(*dbid));
+    auto res = AssetManager::deleteAsset(uint32_t(*dbid));
     if (!res) {
         logError(res.error());
         std::string reason = "Asset is in use, remove children/power source links first."_tr;
@@ -98,7 +98,7 @@ unsigned Delete::deleteAssets(const std::string& idsStr)
         }
     }
 
-    auto result = AssetManager::deleteItems(dbIds);
+    auto result = AssetManager::deleteAsset(dbIds);
 
     bool someAreOk = false;
     for (const auto& [name, asset] : result) {

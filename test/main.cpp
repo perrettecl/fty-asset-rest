@@ -2,8 +2,9 @@
 #include <catch2/catch.hpp>
 #include <mariadb/mysql.h>
 #include <filesystem>
-#include "src/asset/db.h"
+#include "asset/db.h"
 #include <thread>
+#include <fty_log.h>
 
 class CharArray
 {
@@ -86,6 +87,11 @@ static void createDB()
             PRIMARY KEY (id_asset_device_type),
             UNIQUE INDEX `UI_t_bios_asset_device_type` (`name` ASC)
         );
+    )");
+
+    conn.execute(R"(
+        CREATE VIEW v_bios_asset_device_type AS
+            SELECT id_asset_device_type as id, name FROM t_bios_asset_device_type;
     )");
 
     conn.execute(R"(
@@ -481,6 +487,8 @@ static void createDB()
 
 int main(int argc, char* argv[])
 {
+    ManageFtyLog::setInstanceFtylog("asset-test", "conf/logger.conf");
+
     std::stringstream ss;
     ss << getpid();
     std::string pid = ss.str();
@@ -496,7 +504,7 @@ int main(int argc, char* argv[])
     CharArray options("mysql_test", "--datadir="+path, "--socket="+sock);
     CharArray groups("libmysqld_server", "libmysqld_client");
 
-    mysql_library_init(options.size()-1, options.data(), groups.data());
+    mysql_library_init(int(options.size())-1, options.data(), groups.data());
 
     std::string url = "mysql:unix_socket="+sock;
     setenv("DBURL", url.c_str(), 1);

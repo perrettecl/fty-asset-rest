@@ -1,10 +1,10 @@
-#include "asset-import.h"
-#include "asset-helpers.h"
-#include "asset-licensing.h"
-#include "csv.h"
-#include "db.h"
-#include "json.h"
-#include "logger.h"
+#include "asset/asset-import.h"
+#include "asset/asset-helpers.h"
+#include "asset/asset-licensing.h"
+#include "asset/csv.h"
+#include "asset/db.h"
+#include "asset/json.h"
+#include "asset/logger.h"
 #include <fty/split.h>
 #include <fty_asset_activator.h>
 #include <fty_common_db_dbpath.h>
@@ -92,7 +92,7 @@ std::map<std::string, std::string> Import::sanitizeRowExtNames(size_t row, bool 
                         logError(name.error());
                     } else {
                         logDebug("sanitized {} '{}' -> '{}'", it->first, it->second, *name);
-                        result[item] = name;
+                        result[item] = *name;
                     }
                 }
             }
@@ -149,7 +149,7 @@ bool Import::isDate(const std::string& key) const
     return std::regex_match(key, rex);
 }
 
-AssetExpected<void> Import::process()
+AssetExpected<void> Import::process(bool checkLic)
 {
     auto m = mandatoryMissing();
     if (m != "") {
@@ -157,27 +157,31 @@ AssetExpected<void> Import::process()
         return unexpected(error(Errors::ParamRequired).format(m));
     }
 
-    if (auto limitations = getLicensingLimitation(); !limitations) {
-        return unexpected(error(Errors::InternalError).format(limitations.error()));
+    if (checkLic) {
+        if (auto limitations = getLicensingLimitation(); !limitations) {
+            return unexpected(error(Errors::InternalError).format(limitations.error()));
+        } else {
+            if (!limitations->global_configurability) {
+                return unexpected(error(Errors::ActionForbidden)
+                                      .format("Asset handling"_tr, "Licensing global_configurability limit hit"_tr));
+            }
+
+            std::set<uint32_t> ids;
+            return processRow(1, ids, true);
+        }
     } else {
         std::set<uint32_t> ids;
-        return processRow(1, ids, true, *limitations);
+        return processRow(1, ids, true);
     }
 }
 
 
-AssetExpected<void> Import::processRow(
-    size_t row, std::set<uint32_t>& ids, bool sanitize, const LimitationsStruct& limitations)
+AssetExpected<void> Import::processRow(size_t row, std::set<uint32_t>& ids, bool sanitize)
 {
     LOG_START;
 
     logDebug("################ Row number is {}", row);
     static const std::set<std::string> statuses = {"active", "nonactive", "spare", "retired"};
-
-    if (!limitations.global_configurability) {
-        return unexpected(error(Errors::ActionForbidden)
-                              .format("Asset handling"_tr, "Licensing global_configurability limit hit"_tr));
-    }
 
     auto types = db::readElementTypes();
     if (!types) {
@@ -254,19 +258,23 @@ AssetExpected<void> Import::processRow(
             error(Errors::BadParams).format("name", "too long string"_tr, "unique string from 1 to 50 characters"_tr));
     }
 
-    auto name = db::extNameToAssetName(ename);
-    if (!idStr.empty() && name) {
+    auto nameRes = db::extNameToAssetName(ename);
+    if (!idStr.empty() && nameRes) {
         // internal name from DB must be the same as internal name from CSV
-        if (*name != idStr) {
+        if (*nameRes != idStr) {
             return unexpected(
                 error(Errors::BadParams)
                     .format("name", "already existing name"_tr, "unique string from 1 to 50 characters"_tr));
         }
     }
-    if (!name) {
-        return unexpected(name.error());
+    std::string name;
+    if (nameRes) {
+        name = *nameRes;
     }
-    logDebug("name = '{}/{}'", ename, *name);
+//    if (!name) {
+//        return unexpected(name.error());
+//    }
+    logDebug("name = '{}/{}'", ename, name);
     unusedColumns.erase("name");
 
     auto type = m_cm.get_strip(row, "type");
@@ -630,7 +638,7 @@ AssetExpected<void> Import::processRow(
             tnt::Transaction trans(conn);
 
             auto ret = updateDcRoomRowRackGroup(
-                conn, m_el.id, *name, parentId, extattributes, status, priority, groups, assetTag, extattributesRO);
+                conn, m_el.id, name, parentId, extattributes, status, priority, groups, assetTag, extattributesRO);
 
             if (!ret) {
                 trans.rollback();
@@ -642,7 +650,7 @@ AssetExpected<void> Import::processRow(
             if (idStr != "rackcontroller-0") {
                 tnt::Transaction trans(conn);
 
-                auto ret = updateDevice(conn, m_el.id, *name, parentId, extattributes, "nonactive", priority, groups,
+                auto ret = updateDevice(conn, m_el.id, name, parentId, extattributes, "nonactive", priority, groups,
                     links, assetTag, extattributesRO);
 
                 if (!ret) {
@@ -667,7 +675,7 @@ AssetExpected<void> Import::processRow(
             } else {
                 tnt::Transaction trans(conn);
 
-                auto ret = updateDevice(conn, m_el.id, *name, parentId, extattributes, status, priority, groups, links,
+                auto ret = updateDevice(conn, m_el.id, name, parentId, extattributes, status, priority, groups, links,
                     assetTag, extattributesRO);
 
                 if (!ret) {
@@ -878,7 +886,7 @@ Expected<uint32_t> Import::insertDcRoomRowRackGroup(tnt::Connection& conn, const
     const std::map<std::string, std::string>& extattributesRO) const
 {
 
-    if (auto id = db::extNameToAssetId(elementName); !id) {
+    if (auto id = db::extNameToAssetId(elementName)) {
         return unexpected(
             "Element '{}' cannot be processed because of conflict. Most likely duplicate entry."_tr.format(
                 elementName));
@@ -908,7 +916,7 @@ Expected<uint32_t> Import::insertDcRoomRowRackGroup(tnt::Connection& conn, const
             logError(ret.error());
             return unexpected(ret.error());
         }
-        elementId = uint32_t(*ret);
+        elementId = *ret;
     }
 
     {
@@ -941,7 +949,7 @@ Expected<uint32_t> Import::insertDcRoomRowRackGroup(tnt::Connection& conn, const
             logInfo("\"device\" was not inserted (fail monitor_device)");
             return unexpected(ret.error());
         } else {
-            auto ret1 = db::insertIntoMonitorAssetRelation(conn, uint16_t(*ret), elementId);
+            auto ret1 = db::insertIntoMonitorAssetRelation(conn, *ret, elementId);
             if (!ret1) {
                 logInfo("monitor asset link was not inserted (fail monitor asset relation)");
                 return unexpected(ret1.error());
@@ -981,7 +989,7 @@ Expected<uint32_t> Import::insertDevice(tnt::Connection& conn, const std::vector
             logInfo("device was not inserted (fail in element)");
             return unexpected(ret.error());
         }
-        elementId = uint32_t(*ret);
+        elementId = *ret;
     }
 
     {

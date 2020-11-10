@@ -18,8 +18,8 @@
  *
  */
 
-#include "asset-configure-inform.h"
-#include "db.h"
+#include "asset/asset-configure-inform.h"
+#include "asset/db.h"
 #include <fty_common.h>
 #include <fty_common_db.h>
 #include <fty_common_mlm_utils.h>

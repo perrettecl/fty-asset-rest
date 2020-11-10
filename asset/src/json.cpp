@@ -18,9 +18,9 @@
  *
  */
 
-#include "json.h"
-#include "asset-computed.h"
-#include "asset-manager.h"
+#include "asset/json.h"
+#include "asset/asset-computed.h"
+#include "asset/asset-manager.h"
 #include <fty/split.h>
 #include <fty_common.h>
 #include <fty_common_db_asset.h>

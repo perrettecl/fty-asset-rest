@@ -1,7 +1,7 @@
-#include "asset-db.h"
-#include "db.h"
-#include "error.h"
-#include "logger.h"
+#include "asset/asset-db.h"
+#include "asset/db.h"
+#include "asset/error.h"
+#include "asset/logger.h"
 #include <fty/split.h>
 #include <fty/translate.h>
 #include <fty_common_asset_types.h>
@@ -167,7 +167,7 @@ Expected<AssetElement> selectAssetElementByName(const std::string& elementName)
         row.get("id_type", el.typeId);
         row.get("id_subtype", el.subtypeId);
 
-        return std::move(el);
+        return el;
     } catch (const tntdb::NotFound&) {
         return unexpected(error(Errors::ElementNotFound).format(elementName));
     } catch (const std::exception& e) {
@@ -182,7 +182,7 @@ Expected<WebAssetElement> selectAssetElementWebById(uint32_t elementId)
     WebAssetElement el;
 
     if (auto ret = selectAssetElementWebById(elementId, el)) {
-        return std::move(el);
+        return el;
     } else {
         return unexpected(ret.error());
     }
@@ -269,7 +269,7 @@ Expected<Attributes> selectExtAttributes(uint32_t elementId)
             attrs.emplace(row.get("keytag"), val);
         }
 
-        return std::move(attrs);
+        return attrs;
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
@@ -301,7 +301,7 @@ Expected<std::map<uint32_t, std::string>> selectAssetElementGroups(uint32_t elem
         for (const auto& row : res) {
             item.emplace(row.get<uint32_t>("id_asset_group"), row.get("name"));
         }
-        return std::move(item);
+        return item;
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
@@ -514,7 +514,7 @@ Expected<uint32_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElem
         st.bind(
             "name"_p      = update ? element.name : element.name + "-@@-" + std::to_string(rand()),
             "typeId"_p    = element.typeId,
-            "subtypeId"_p = element.subtypeId != 0 ? element.subtypeId : persist::asset_subtype::N_A,
+            "subtypeId"_p = element.subtypeId != 0 ? element.subtypeId : uint32_t(persist::asset_subtype::N_A),
             "status"_p    = element.status,
             "priority"_p  = element.priority,
             "assetTag"_p  = element.assetTag,
@@ -898,7 +898,7 @@ static Expected<std::map<std::string, int>> getDictionary(const std::string& stS
             mymap.emplace(row.get("name"), row.get<int>("id"));
         }
 
-        return std::move(mymap);
+        return mymap;
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), stStr));
     }
@@ -964,7 +964,7 @@ Expected<std::vector<DbAssetLink>> selectAssetDeviceLinksTo(uint32_t elementId, 
 
             ret.push_back(link);
         }
-        return std::move(ret);
+        return ret;
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
@@ -1001,7 +1001,7 @@ Expected<std::map<uint32_t, std::string>> selectShortElements(uint16_t typeId, u
             item.emplace(row.get<uint32_t>("id"), row.get("name"));
         }
 
-        return std::move(item);
+        return item;
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), typeId));
     }
@@ -1129,7 +1129,7 @@ Expected<std::vector<uint32_t>> selectAssetsByParent(uint32_t parentId)
         for(const auto& it: conn.select(sql, "parentId"_p = parentId)) {
             ids.emplace_back(it.get<uint32_t>("id"));
         }
-        return std::move(ids);
+        return ids;
     } catch (const tntdb::NotFound&) {
         return unexpected(error(Errors::ElementNotFound).format(parentId));
     } catch (const std::exception& e) {
@@ -1155,7 +1155,7 @@ Expected<std::vector<uint32_t>> selectAssetDeviceLinksSrc(uint32_t elementId)
         for(const auto& it: conn.select(sql, "src"_p = elementId)) {
             ids.emplace_back(it.get<uint32_t>("id_asset_device_dest"));
         }
-        return std::move(ids);
+        return ids;
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }

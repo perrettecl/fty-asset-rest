@@ -18,7 +18,7 @@
  *
  */
 
-#include "asset-computed.h"
+#include "asset/asset-computed.h"
 #include <fty/convert.h>
 #include <fty_common.h>
 #include <fty_common_db_asset.h>
@@ -34,7 +34,7 @@ static int s_get_devices_usize(tntdb::Connection& conn, std::set<uint32_t>& elem
     std::function<void(const tntdb::Row&)> sumarize = [&size](const tntdb::Row& row) {
         uint32_t tmp = fty::convert<uint32_t>(row.getString("value"));
         if (tmp != UINT32_MAX) {
-            size += tmp;
+            size += int(tmp);
         }
     };
 

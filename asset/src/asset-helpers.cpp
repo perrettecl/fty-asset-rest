@@ -1,5 +1,5 @@
-#include "asset-helpers.h"
-#include "asset-db.h"
+#include "asset/asset-helpers.h"
+#include "asset/asset-db.h"
 #include <ctime>
 
 namespace fty::asset {

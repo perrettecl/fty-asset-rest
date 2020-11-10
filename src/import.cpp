@@ -1,7 +1,10 @@
 #include "import.h"
 #include <fty/rest/audit-log.h>
+#include "asset/csv.h"
 
 namespace fty::asset {
+
+#define CREATE_MODE_CSV         2
 
 unsigned Import::run()
 {
@@ -10,103 +13,34 @@ unsigned Import::run()
         throw rest::Error(ret.error());
     }
 
-    // sanity check
-    Expected<std::string> id  = m_request.queryArg<std::string>("id");
-    Expected<std::string> ids = m_request.queryArg<std::string>("ids");
-    if (!id && !ids) {
-        auditError("Request DELETE asset FAILED"_tr);
-        throw rest::Error("request-param-required", "id");
+    //HARDCODED limit: can't import things larger than 128K
+    // this prevents DoS attacks against the box - can be raised if needed
+    // don't forget internal processing is in UCS-32, therefore the
+    // real memory requirements are ~640kB
+    // Content size = body + something. So max size of body is about 125k
+    if (m_request.contentSize () > 128*1024) {
+        auditError("Request CREATE asset_import FAILED {}"_tr, "can't import things larger than 128K"_tr);
+        throw rest::Error("content-too-big", "128k");
     }
+
+    if (auto part = m_request.multipart("assets")) {
+        std::stringstream ss(*part);
+        CsvMap csv = CsvMap_from_istream(ss);
+
+        csv.setCreateMode(CREATE_MODE_CSV);
+        csv.setCreateUser(user.login());
+        csv.setUpdateUser(user.login());
+    } else {
+        auditError("Request CREATE asset_import FAILED {}"_tr, part.error());
+        throw rest::Error("request-param-required", "file=assets");
+    }
+
     return HTTP_OK;
 }
 
 }
 
 #if 0
-#include <string>
-#include <stdexcept>
-#include <fstream>
-#include <cstring>
-#include <sys/types.h>
-#include <unistd.h>
-#include <fty_common_rest_helpers.h>
-
-#include "src/db/inout.h"
-#include "bios_magic.h"
-#include "shared/configure_inform.h"
-#include <fty_common_rest_audit_log.h>
-</%pre>
-<%request scope="global">
-UserInfo user;
-bool database_ready;
-</%request>
-<%cpp>
-    // verify server is ready
-    if (!database_ready) {
-        log_debug ("Database is not ready yet.");
-        std::string err =  TRANSLATE_ME ("Database is not ready yet, please try again after a while.");
-        if (request.getMethod () == "POST") {
-            log_error_audit ("Request CREATE asset_import FAILED");
-        }
-        http_die ("internal-error", err.c_str ());
-    }
-
-    // check user permissions
-    static const std::map <BiosProfile, std::string> PERMISSIONS = {
-            {BiosProfile::Admin,     "C"}
-            };
-    std::string audit_msg;
-    if (request.getMethod () == "POST")
-        audit_msg = std::string ("Request CREATE asset_import FAILED");
-    CHECK_USER_PERMISSIONS_OR_DIE_AUDIT (PERMISSIONS, audit_msg.empty () ? nullptr : audit_msg.c_str ());
-
-if (request.getMethod () != "POST") {
-    http_die ("method-not-allowed", request.getMethod ().c_str () );
-}
-
-//HARDCODED limit: can't import things larger than 128K
-// this prevents DoS attacks against the box - can be raised if needed
-// don't forget internal processing is in UCS-32, therefore the
-// real memory requirements are ~640kB
-// Content size = body + something. So max size of body is about 125k
-if (request.getContentSize () > 128*1024) {
-    log_error_audit ("Request CREATE asset_import FAILED");
-    http_die ("content-too-big", "125k");
-}
-
-// http://www.tntnet.org/howto/upload-howto.html
-const tnt::Multipart& mp = request.getMultipart ();
-tnt::Multipart::const_iterator it = mp.find ("assets");
-if (it == mp.end ()) {
-    log_error_audit ("Request CREATE asset_import FAILED");
-    http_die ("request-param-required", "file=assets");
-}
-
-std::string path_p;
-try {
-    shared::convert_file (it->getBodyBegin (), it->getBodyEnd (), path_p);
-}
-catch (const std::logic_error &e) {
-    LOG_END_ABNORMAL (e);
-    if (!path_p.empty ())
-        ::unlink (path_p.c_str ());
-    log_error_audit ("Request CREATE asset_import FAILED");
-    http_die ("bad-request-document", e.what ());
-}
-catch (const std::runtime_error &e) {
-    LOG_END_ABNORMAL (e);
-    if (!path_p.empty ())
-        ::unlink (path_p.c_str ());
-    log_error_audit ("Request CREATE asset_import FAILED");
-    http_die ("internal-error", e.what ());
-}
-catch (const std::exception &e) {
-    LOG_END_ABNORMAL (e);
-    if (!path_p.empty ())
-        ::unlink (path_p.c_str ());
-    log_error_audit ("Request CREATE asset_import FAILED");
-    http_die ("internal-error", e.what ());
-}
 
 try{
     std::ifstream inp{path_p};

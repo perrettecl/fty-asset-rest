@@ -18,8 +18,7 @@
  *
  */
 
-#include "csv.h"
-//#include "../persist/assetcrud.h"
+#include "asset/csv.h"
 #include <algorithm>
 #include <cxxtools/csvdeserializer.h>
 #include <fty_common.h>

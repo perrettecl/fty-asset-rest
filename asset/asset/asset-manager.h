@@ -17,10 +17,12 @@ public:
 
     static Expected<db::WebAssetElementExt> getItem(uint32_t id);
     static Expected<AssetList>              getItems(const std::string& typeName, const std::string& subtypeName);
-    static Expected<db::AssetElement>       deleteItem(uint32_t id);
-    static std::map<std::string, Expected<db::AssetElement>> deleteItems(const std::map<uint32_t, std::string>& ids);
 
-    static Expected<db::AssetElement> deleteAsset(const db::AssetElement& element);
+    static Expected<db::AssetElement>                        deleteAsset(uint32_t id);
+    static std::map<std::string, Expected<db::AssetElement>> deleteAsset(const std::map<uint32_t, std::string>& ids);
+    static Expected<db::AssetElement>                        deleteAsset(const db::AssetElement& element);
+
+    static Expected<uint32_t> createAsset(const std::string& json, const std::string& user, bool sendNotify = true);
 
 private:
     static Expected<db::AssetElement> deleteDcRoomRowRack(const db::AssetElement& element);

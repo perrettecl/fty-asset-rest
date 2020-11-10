@@ -10,40 +10,8 @@ project(fty-asset-rest
 ########################################################################################################################
 find_package(fty-cmake PATHS ${CMAKE_BINARY_DIR}/fty-cmake)
 ########################################################################################################################
-
-etn_target(static asset
-    SOURCES
-        src/asset/json.cpp
-        src/asset/json.h
-        src/asset/asset-manager.cpp
-        src/asset/asset-manager.h
-        src/asset/asset-computed.cpp
-        src/asset/asset-computed.h
-        src/asset/asset-helpers.cpp
-        src/asset/asset-helpers.h
-        src/asset/asset-db.cpp
-        src/asset/asset-db.h
-        src/asset/asset-licensing.cpp
-        src/asset/asset-licensing.h
-        src/asset/asset-import.cpp
-        src/asset/asset-import.h
-        src/asset/asset-configure-inform.cpp
-        src/asset/asset-configure-inform.h
-        src/asset/csv.cpp
-        src/asset/csv.h
-        src/asset/error.h
-        src/asset/logger.h
-        src/asset/db.h
-    USES
-        fty_common_logging
-        mlm
-        fty_asset_activator
-        fty_common
-        fty-utils
-        fty_shm
-        fty_common_rest
-    PRIVATE
-)
+add_subdirectory(asset)
+########################################################################################################################
 
 etn_target(shared ${PROJECT_NAME}
     SOURCES
@@ -64,7 +32,7 @@ etn_target(shared ${PROJECT_NAME}
         fty-cmake-rest
         tntnet
         fty_common_rest
-        asset
+        fty-asset
     TARGET_DESTINATION /usr/lib/tntnet
 )
 

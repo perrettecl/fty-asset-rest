@@ -3,14 +3,21 @@ project(asset-test)
 etn_test(asset-test
     SOURCES
         main.cpp
-        insert.cpp
-        names.cpp
-        select.cpp
+        db/insert.cpp
+        db/names.cpp
+        db/select.cpp
+
+        test-utils.h
+        read.cpp
+        create.cpp
+    CONFIGS
+        conf/logger.conf
     USES
-        asset
+        fty-asset
         Catch2::Catch2
         mysqld
         fty_common_db
         tntdb
         cxxtools
+        yaml-cpp
 )
