@@ -41,6 +41,7 @@ etn_target(static ${PROJECT_NAME}
         src/manager/read.cpp
         src/manager/delete.cpp
         src/manager/create.cpp
+        src/manager/import.cpp
     INCLUDE_DIRS src
     USES
         fty_common_logging

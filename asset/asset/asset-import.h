@@ -19,15 +19,17 @@ namespace db {
 class Import
 {
 public:
+    using ImportResMap = std::map<size_t, Expected<db::AssetElement>>;
+
     Import(const CsvMap& cm);
     AssetExpected<void>      process(bool checkLic);
-    const db::AssetElement&  item() const;
+    const ImportResMap&      items() const;
     persist::asset_operation operation() const;
 
 private:
     std::string                        mandatoryMissing() const;
     std::map<std::string, std::string> sanitizeRowExtNames(size_t row, bool sanitize) const;
-    AssetExpected<void>                processRow(size_t row, std::set<uint32_t>& ids, bool sanitize);
+    AssetExpected<db::AssetElement>    processRow(size_t row, const std::set<uint32_t>& ids, bool sanitize);
     uint16_t                           getPriority(const std::string& s) const;
     bool                               isDate(const std::string& key) const;
     std::string                        matchExtAttr(const std::string& value, const std::string& key) const;
@@ -56,7 +58,7 @@ private:
 
 private:
     const CsvMap&            m_cm;
-    db::AssetElement         m_el;
+    ImportResMap             m_el;
     persist::asset_operation m_operation;
 };
 

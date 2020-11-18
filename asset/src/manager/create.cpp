@@ -92,25 +92,33 @@ Expected<uint32_t> AssetManager::createAsset(const std::string& json, const std:
         //             2. if any error would occur during the sending message,
         //                user will never know if element was actually inserted
         //                or not
+        const auto& imported = import.items();
+        if (imported.find(1) == imported.end()){
+            return unexpected(msg.format(itemName, "Import failed"_tr));
+        }
 
-        if (sendNotify) {
-            // this code can be executed in multiple threads -> agent's name should
-            // be unique at the every moment
-            std::string agent_name = generateMlmClientId("web.asset_post");
-            if (auto sent = sendConfigure(import.item(), import.operation(), agent_name); !sent) {
-                logError (sent.error());
-                return unexpected("Error during configuration sending of asset change notification. Consult system log."_tr);
+        if (imported.at(1)) {
+            if (sendNotify) {
+                // this code can be executed in multiple threads -> agent's name should
+                // be unique at the every moment
+                std::string agent_name = generateMlmClientId("web.asset_post");
+                if (auto sent = sendConfigure(*(imported.at(1)), import.operation(), agent_name); !sent) {
+                    logError (sent.error());
+                    return unexpected("Error during configuration sending of asset change notification. Consult system log."_tr);
+                }
             }
-        }
 
-        // no unexpected errors was detected
-        // process results
-        auto ret =  db::idToNameExtName(import.item().id);
-        if (!ret) {
-            logError(ret.error());
-            return unexpected(msg.format(itemName, "Database failure"_tr));
+            // no unexpected errors was detected
+            // process results
+            auto ret =  db::idToNameExtName(imported.at(1)->id);
+            if (!ret) {
+                logError(ret.error());
+                return unexpected(msg.format(itemName, "Database failure"_tr));
+            }
+            return imported.at(1)->id;
+        } else {
+            return unexpected(msg.format(itemName, "Import failed"_tr));
         }
-        return import.item().id;
     } else {
         return unexpected(msg.format(itemName, res.error()));
     }

@@ -30,7 +30,7 @@ Import::Import(const CsvMap& cm)
 {
 }
 
-const db::AssetElement& Import::item() const
+const Import::ImportResMap& Import::items() const
 {
     return m_el;
 }
@@ -157,6 +157,7 @@ AssetExpected<void> Import::process(bool checkLic)
         return unexpected(error(Errors::ParamRequired).format(m));
     }
 
+    std::set<uint32_t> ids;
     if (checkLic) {
         if (auto limitations = getLicensingLimitation(); !limitations) {
             return unexpected(error(Errors::InternalError).format(limitations.error()));
@@ -166,17 +167,30 @@ AssetExpected<void> Import::process(bool checkLic)
                                       .format("Asset handling"_tr, "Licensing global_configurability limit hit"_tr));
             }
 
-            std::set<uint32_t> ids;
-            return processRow(1, ids, true);
+            for (size_t row = 1; row != m_cm.rows(); ++row) {
+                if (auto it = processRow(row, ids, true)) {
+                    ids.insert(it->id);
+                    m_el.emplace(row, *it);
+                } else {
+                    m_el.emplace(row, unexpected(it.error()));
+                }
+            }
         }
     } else {
-        std::set<uint32_t> ids;
-        return processRow(1, ids, true);
+        for (size_t row = 1; row != m_cm.rows(); ++row) {
+            if (auto it = processRow(row, ids, true)) {
+                ids.insert(it->id);
+                m_el.emplace(row, *it);
+            } else {
+                m_el.emplace(row, unexpected(it.error()));
+            }
+        }
     }
+    return {};
 }
 
 
-AssetExpected<void> Import::processRow(size_t row, std::set<uint32_t>& ids, bool sanitize)
+AssetExpected<db::AssetElement> Import::processRow(size_t row, const std::set<uint32_t>& ids, bool sanitize)
 {
     LOG_START;
 
@@ -271,9 +285,9 @@ AssetExpected<void> Import::processRow(size_t row, std::set<uint32_t>& ids, bool
     if (nameRes) {
         name = *nameRes;
     }
-//    if (!name) {
-//        return unexpected(name.error());
-//    }
+    //    if (!name) {
+    //        return unexpected(name.error());
+    //    }
     logDebug("name = '{}/{}'", ename, name);
     unusedColumns.erase("name");
 
@@ -623,6 +637,8 @@ AssetExpected<void> Import::processRow(size_t row, std::set<uint32_t>& ids, bool
 
     tnt::Connection conn;
 
+    db::AssetElement el;
+
     if (!idStr.empty()) {
         std::map<std::string, std::string> extattributesRO;
         if (m_cm.getUpdateTs() != "") {
@@ -631,14 +647,14 @@ AssetExpected<void> Import::processRow(size_t row, std::set<uint32_t>& ids, bool
         if (m_cm.getUpdateUser() != "") {
             extattributesRO["update_user"] = m_cm.getUpdateUser();
         }
-        m_el.id = id;
+        el.id = id;
 
         std::string errmsg = "";
         if (type != "device") {
             tnt::Transaction trans(conn);
 
             auto ret = updateDcRoomRowRackGroup(
-                conn, m_el.id, name, parentId, extattributes, status, priority, groups, assetTag, extattributesRO);
+                conn, el.id, name, parentId, extattributes, status, priority, groups, assetTag, extattributesRO);
 
             if (!ret) {
                 trans.rollback();
@@ -650,7 +666,7 @@ AssetExpected<void> Import::processRow(size_t row, std::set<uint32_t>& ids, bool
             if (idStr != "rackcontroller-0") {
                 tnt::Transaction trans(conn);
 
-                auto ret = updateDevice(conn, m_el.id, name, parentId, extattributes, "nonactive", priority, groups,
+                auto ret = updateDevice(conn, el.id, name, parentId, extattributes, "nonactive", priority, groups,
                     links, assetTag, extattributesRO);
 
                 if (!ret) {
@@ -663,7 +679,7 @@ AssetExpected<void> Import::processRow(size_t row, std::set<uint32_t>& ids, bool
                 if (type == "device" && status == "active" && subtypeId != rackControllerId) {
                     // check if we may activate the device
                     try {
-                        std::string assetJson = getJsonAsset(m_el.id);
+                        std::string assetJson = getJsonAsset(el.id);
 
                         mlm::MlmSyncClient  client(AGENT_FTY_ASSET, AGENT_ASSET_ACTIVATOR);
                         fty::AssetActivator activationAccessor(client);
@@ -675,7 +691,7 @@ AssetExpected<void> Import::processRow(size_t row, std::set<uint32_t>& ids, bool
             } else {
                 tnt::Transaction trans(conn);
 
-                auto ret = updateDevice(conn, m_el.id, name, parentId, extattributes, status, priority, groups, links,
+                auto ret = updateDevice(conn, el.id, name, parentId, extattributes, status, priority, groups, links,
                     assetTag, extattributesRO);
 
                 if (!ret) {
@@ -708,7 +724,7 @@ AssetExpected<void> Import::processRow(size_t row, std::set<uint32_t>& ids, bool
                 return unexpected(ret.error());
             } else {
                 trans.commit();
-                m_el.id = *ret;
+                el.id = *ret;
             }
         } else {
             if (subtypeId != rackControllerId) {
@@ -722,12 +738,12 @@ AssetExpected<void> Import::processRow(size_t row, std::set<uint32_t>& ids, bool
                     return unexpected(ret.error());
                 }
                 trans.commit();
-                m_el.id = *ret;
+                el.id = *ret;
 
                 if (type == "device" && status == "active" && subtypeId != rackControllerId) {
                     // check if we may activate the device
                     try {
-                        std::string         assetJson = getJsonAsset(m_el.id);
+                        std::string         assetJson = getJsonAsset(el.id);
                         mlm::MlmSyncClient  client(AGENT_FTY_ASSET, AGENT_ASSET_ACTIVATOR);
                         fty::AssetActivator activationAccessor(client);
                         activationAccessor.activate(assetJson);
@@ -746,31 +762,27 @@ AssetExpected<void> Import::processRow(size_t row, std::set<uint32_t>& ids, bool
                     return unexpected(ret.error());
                 }
                 trans.commit();
-                m_el.id = *ret;
+                el.id = *ret;
             }
         }
     }
 
     auto ret = db::extNameToAssetName(ename);
     if (ret) {
-        m_el.name = *ret;
+        el.name = *ret;
     } else {
         return unexpected("Database failure"_tr);
     }
 
-    m_el.status    = status;
-    m_el.parentId  = parentId;
-    m_el.priority  = priority;
-    m_el.typeId    = typeId;
-    m_el.subtypeId = subtypeId;
-    m_el.assetTag  = assetTag;
-    m_el.ext       = extattributes;
+    el.status    = status;
+    el.parentId  = parentId;
+    el.priority  = priority;
+    el.typeId    = typeId;
+    el.subtypeId = subtypeId;
+    el.assetTag  = assetTag;
+    el.ext       = extattributes;
 
-    if (!idStr.empty()) {
-        ids.insert(id);
-    }
-
-    return {};
+    return el;
 }
 
 AssetExpected<void> Import::updateDcRoomRowRackGroup(tnt::Connection& conn, uint32_t elementId,
