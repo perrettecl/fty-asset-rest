@@ -29,7 +29,7 @@ public:
 private:
     std::string                        mandatoryMissing() const;
     std::map<std::string, std::string> sanitizeRowExtNames(size_t row, bool sanitize) const;
-    AssetExpected<db::AssetElement>    processRow(size_t row, const std::set<uint32_t>& ids, bool sanitize);
+    AssetExpected<db::AssetElement>    processRow(size_t row, const std::set<uint32_t>& ids, bool sanitize, bool checkLic);
     uint16_t                           getPriority(const std::string& s) const;
     bool                               isDate(const std::string& key) const;
     std::string                        matchExtAttr(const std::string& value, const std::string& key) const;

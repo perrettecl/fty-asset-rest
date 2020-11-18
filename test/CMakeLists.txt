@@ -10,6 +10,7 @@ etn_test(asset-test
         test-utils.h
         read.cpp
         create.cpp
+        import.cpp
     CONFIGS
         conf/logger.conf
     USES

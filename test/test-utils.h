@@ -60,6 +60,14 @@ inline void deleteAsset(const fty::asset::db::AssetElement& el)
     }
 
     {
+        auto ret = fty::asset::db::deleteMonitorAssetRelationByA(conn, el.id);
+        if (!ret) {
+            FAIL(ret.error());
+        }
+        CHECK(ret);
+    }
+
+    {
         auto ret = fty::asset::db::deleteAssetElement(conn, el.id);
         if (!ret) {
             FAIL(ret.error());

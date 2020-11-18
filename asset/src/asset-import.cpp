@@ -168,7 +168,7 @@ AssetExpected<void> Import::process(bool checkLic)
             }
 
             for (size_t row = 1; row != m_cm.rows(); ++row) {
-                if (auto it = processRow(row, ids, true)) {
+                if (auto it = processRow(row, ids, true, checkLic)) {
                     ids.insert(it->id);
                     m_el.emplace(row, *it);
                 } else {
@@ -178,7 +178,7 @@ AssetExpected<void> Import::process(bool checkLic)
         }
     } else {
         for (size_t row = 1; row != m_cm.rows(); ++row) {
-            if (auto it = processRow(row, ids, true)) {
+            if (auto it = processRow(row, ids, true, checkLic)) {
                 ids.insert(it->id);
                 m_el.emplace(row, *it);
             } else {
@@ -190,7 +190,7 @@ AssetExpected<void> Import::process(bool checkLic)
 }
 
 
-AssetExpected<db::AssetElement> Import::processRow(size_t row, const std::set<uint32_t>& ids, bool sanitize)
+AssetExpected<db::AssetElement> Import::processRow(size_t row, const std::set<uint32_t>& ids, bool sanitize, bool checkLic)
 {
     LOG_START;
 
@@ -492,7 +492,7 @@ AssetExpected<db::AssetElement> Import::processRow(size_t row, const std::set<ui
                 oneLink.type = 1; // TODO remove hardcoded constant
                 links.push_back(oneLink);
             } else {
-                logWarn("information about power sources is ignored for type '%s'", type);
+                logWarn("information about power sources is ignored for type '{}'", type);
             }
         }
     }
@@ -676,7 +676,7 @@ AssetExpected<db::AssetElement> Import::processRow(size_t row, const std::set<ui
                     trans.commit();
                 }
 
-                if (type == "device" && status == "active" && subtypeId != rackControllerId) {
+                if (type == "device" && status == "active" && subtypeId != rackControllerId && checkLic) {
                     // check if we may activate the device
                     try {
                         std::string assetJson = getJsonAsset(el.id);
@@ -740,7 +740,7 @@ AssetExpected<db::AssetElement> Import::processRow(size_t row, const std::set<ui
                 trans.commit();
                 el.id = *ret;
 
-                if (type == "device" && status == "active" && subtypeId != rackControllerId) {
+                if (type == "device" && status == "active" && subtypeId != rackControllerId && checkLic) {
                     // check if we may activate the device
                     try {
                         std::string         assetJson = getJsonAsset(el.id);
