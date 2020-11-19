@@ -25,6 +25,7 @@ public:
 
     static Expected<uint32_t> createAsset(const std::string& json, const std::string& user, bool sendNotify = true);
     static Expected<ImportList> importCsv(const std::string& csv, const std::string& user, bool sendNotify = true);
+    static Expected<std::string> exportCsv(const std::optional<db::AssetElement>& dc);
 private:
     static Expected<db::AssetElement> deleteDcRoomRowRack(const db::AssetElement& element);
     static Expected<db::AssetElement> deleteGroup(const db::AssetElement& element);

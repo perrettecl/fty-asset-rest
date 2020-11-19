@@ -87,6 +87,8 @@ private:
 class Rows
 {
 public:
+    Rows();
+
     ConstIterator begin() const;
     ConstIterator end() const;
     size_t        size() const;
@@ -415,7 +417,6 @@ inline tnt::Row::Row(const tntdb::Row& row)
 // Rows iterator impl
 // =====================================================================================================================
 
-
 inline void tnt::ConstIterator::setOffset(size_t off)
 {
     if (off != m_offset) {
@@ -543,6 +544,11 @@ inline tnt::Rows::Rows(const tntdb::Result& rows)
     : m_rows(rows)
 {
 }
+
+inline tnt::Rows::Rows()
+{
+}
+
 
 // =====================================================================================================================
 // Transaction impl

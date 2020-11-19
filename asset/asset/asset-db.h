@@ -30,6 +30,7 @@ public:
 
 struct WebAssetElement : public AssetElement
 {
+    std::string extName;
     std::string typeName;
     uint16_t    parentTypeId;
     std::string subtypeName;
@@ -81,22 +82,27 @@ Expected<int64_t> nameToAssetId(const std::string& assetName); //!test
 
 /// Converts database id to internal name and extended (unicode) name
 /// @param assetId asset id
-/// returns pair of name and extended name or error
+/// @returns pair of name and extended name or error
 Expected<std::pair<std::string, std::string>> idToNameExtName(uint32_t assetId); //!test
 
 /// Converts asset's extended name to its internal name
 /// @param assetExtName asset external name
-/// returns internal name or error
+/// @returns internal name or error
 Expected<std::string> extNameToAssetName(const std::string& assetExtName); //!test
+
+/// Converts internal name to extended name
+/// @param assetName asset internal name
+/// @returns external name or error
+Expected<std::string> nameToExtName(std::string assetName);
 
 /// Converts asset's extended name to id
 /// @param assetExtName asset external name
-/// returns id or error
+/// @returns id or error
 Expected<int64_t> extNameToAssetId(const std::string& assetExtName); //!test
 
 /// select basic information about asset element by name
 /// @param name asset internal or external name
-/// return @ref AssetElement or error
+/// @returns @ref AssetElement or error
 Expected<AssetElement> selectAssetElementByName(const std::string& name);  //!test
 
 /// Selects all data about asset in WebAssetElement
@@ -112,12 +118,12 @@ Expected<void> selectAssetElementWebById(uint32_t elementId, WebAssetElement& as
 
 /// Selects all ext_attributes of asset
 /// @param elementId asset element id
-/// @return Attributes map or error
+/// @returns Attributes map or error
 Expected<Attributes> selectExtAttributes(uint32_t elementId); //!test
 
 /// get information about the groups element belongs to
 /// @param elementId element id
-/// returns groups map or error
+/// @returns groups map or error
 Expected<std::map<uint32_t, std::string>> selectAssetElementGroups(uint32_t elementId); //!test
 
 
@@ -143,6 +149,7 @@ Expected<uint> deleteAssetExtAttributesWithRo(tnt::Connection& conn, uint32_t el
 /// @param conn database established connection
 /// @param attributes attributes map - {key, value}
 /// @param readOnly 'read_only' status
+/// @returns affected rows count or error
 Expected<uint> insertIntoAssetExtAttributes(
     tnt::Connection& conn, uint32_t elementId, const std::map<std::string, std::string>& attributes, bool readOnly); //!test
 
@@ -276,5 +283,25 @@ Expected<std::vector<uint32_t>> selectAssetDeviceLinksSrc(uint32_t elementId); /
 Expected<std::map<std::string, int>> readElementTypes();
 Expected<std::map<std::string, int>> readDeviceTypes();
 
+/// Selects maximum number of power sources for device in the system
+/// @returns  number of power sources or error
+Expected<uint32_t> maxNumberOfPowerLinks();
 
+/// Selects maximal number of groups in the system
+/// @returns number of groups or error
+Expected<uint32_t> maxNumberOfAssetGroups();
+
+/// Selects all read-write ext attributes
+/// @returns attribures names or error
+Expected<std::vector<std::string>> selectExtRwAttributesKeytags();
+
+/// Selects everything from v_web_element
+/// @param dc datacenter id, if is set then returns assets for datacenter only
+/// @return list of elements or error
+Expected<std::vector<WebAssetElement>> selectAssetElementAll(const std::optional<uint32_t>& dc = std::nullopt);
+
+/// Selects all group names for given element id
+/// @param id asset element id
+/// @returns group names or error
+Expected<std::vector<std::string>> selectGroupNames(uint32_t id);
 } // namespace fty::asset::db

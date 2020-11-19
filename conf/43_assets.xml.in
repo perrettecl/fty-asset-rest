@@ -16,7 +16,7 @@
 
 
 <mapping>
-  <target>asset/list@libfty_rest</target>
+  <target>asset/list@lib${NAME}</target>
   <url>^/api/v1/asset/(datacenter|room|row|rack|group|device)s.*$</url>
   <args>
     <type>$1</type>
@@ -24,7 +24,7 @@
 </mapping>
 
 <mapping>
-  <target>asset/delete@libfty_rest</target>
+  <target>asset/delete@lib${NAME}</target>
   <url>^/api/v1/asset/(.*)$</url>
   <method>DELETE</method>
   <args>
@@ -32,11 +32,17 @@
   </args>
 </mapping>
 
+<mapping>
+  <target>asset/import@lib${NAME}</target>
+  <url>^/api/v1/asset/import.*</url>
+</mapping>
+
 <!-- to move -->
 
 <mapping>
-  <target>asset_import@libfty_rest</target>
-  <url>^/api/v1/asset/import.*</url>
+  <target>asset_export@libfty_rest</target>
+  <method>GET</method>
+  <url>^/api/v1/asset/export</url>
 </mapping>
 
 <mapping>
@@ -48,11 +54,6 @@
   </args>
 </mapping>
 
-<mapping>
-  <target>asset_export@libfty_rest</target>
-  <method>GET</method>
-  <url>^/api/v1/asset/export</url>
-</mapping>
 
 <mapping>
   <target>asset_actions_GET@libfty_rest</target>

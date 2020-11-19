@@ -27,7 +27,8 @@ etn_target(shared ${PROJECT_NAME}
         src/delete.h
         src/import.cpp
         src/import.h
-
+        src/export.cpp
+        src/export.h
     USES
         fty-cmake-rest
         tntnet

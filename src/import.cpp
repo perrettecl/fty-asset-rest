@@ -1,6 +1,7 @@
 #include "import.h"
 #include "asset/asset-manager.h"
 #include <fty/rest/audit-log.h>
+#include <fty/rest/component.h>
 
 namespace fty::asset {
 
@@ -55,3 +56,5 @@ unsigned Import::run()
 }
 
 } // namespace fty::asset
+
+registerHandler(fty::asset::Import)

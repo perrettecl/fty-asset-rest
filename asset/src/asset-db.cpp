@@ -11,6 +11,52 @@ namespace fty::asset::db {
 
 // =====================================================================================================================
 
+static std::string webAssetSql()
+{
+    static const std::string sql = R"(
+        SELECT
+            v.id                as id,
+            v.name              as name,
+            ext.value           as extName
+            v.id_type           as typeId,
+            v.type_name         as typeName,
+            v.subtype_id        as subTypeId,
+            v.subtype_name      as subTypeName,
+            v.id_parent         as parentId,
+            v.id_parent_type    as parentTypeId,
+            v.parent_name       as parentName,
+            v.status            as status,
+            v.priority          as priority,
+            v.asset_tag         as assetTag,
+        FROM
+            v_web_element v
+        LEFT JOIN
+                t_bios_asset_ext_attributes AS ext
+            ON
+                ext.id_asset_element = v.id AND ext.keytag = "name"
+    )";
+    return sql;
+}
+
+static void fetchWebAsset(const tnt::Row& row, WebAssetElement& asset)
+{
+    row.get("id", asset.id);
+    row.get("name", asset.name);
+    row.get("extName", asset.extName);
+    row.get("typeId", asset.typeId);
+    row.get("typeName", asset.typeName);
+    row.get("subTypeId", asset.subtypeId);
+    row.get("subTypeName", asset.subtypeName);
+    row.get("parentId", asset.parentId);
+    row.get("parentTypeId", asset.parentTypeId);
+    row.get("parentName", asset.parentName);
+    row.get("status", asset.status);
+    row.get("priority", asset.priority);
+    row.get("assetTag", asset.assetTag);
+}
+
+// =====================================================================================================================
+
 Expected<int64_t> nameToAssetId(const std::string& assetName)
 {
     static const std::string sql = R"(
@@ -60,6 +106,29 @@ Expected<std::pair<std::string, std::string>> idToNameExtName(uint32_t assetId)
         return unexpected(error(Errors::ElementNotFound).format(assetId));
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), assetId));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<std::string> nameToExtName(std::string assetName)
+{
+    static const std::string sql = R"(
+        SELECT e.value
+        FROM t_bios_asset_ext_attributes AS e
+        INNER JOIN t_bios_asset_element AS a
+            ON a.id_asset_element = e.id_asset_element
+        WHERE keytag = 'name' AND a.name = :asset_name
+    )";
+
+    try {
+        tnt::Connection conn;
+        auto            res = conn.selectRow(sql, "asset_name"_p = assetName);
+        return res.get("value");
+    } catch (const tntdb::NotFound&) {
+        return unexpected(error(Errors::ElementNotFound).format(assetName));
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), assetName));
     }
 }
 
@@ -192,22 +261,7 @@ Expected<WebAssetElement> selectAssetElementWebById(uint32_t elementId)
 
 Expected<void> selectAssetElementWebById(uint32_t elementId, WebAssetElement& asset)
 {
-    static const std::string sql = R"(
-        SELECT
-            v.id,
-            v.name,
-            v.id_type,
-            v.type_name,
-            v.subtype_id,
-            v.subtype_name,
-            v.id_parent,
-            v.id_parent_type,
-            v.status,
-            v.priority,
-            v.asset_tag,
-            v.parent_name
-        FROM
-            v_web_element v
+    static const std::string sql = webAssetSql() + R"(
         WHERE
             :id = v.id
     )";
@@ -217,18 +271,7 @@ Expected<void> selectAssetElementWebById(uint32_t elementId, WebAssetElement& as
 
         auto row = db.selectRow(sql, "id"_p = elementId);
 
-        row.get("id", asset.id);
-        row.get("name", asset.name);
-        row.get("id_type", asset.typeId);
-        row.get("type_name", asset.typeName);
-        row.get("subtype_id", asset.subtypeId);
-        row.get("subtype_name", asset.subtypeName);
-        row.get("id_parent", asset.parentId);
-        row.get("id_parent_type", asset.parentTypeId);
-        row.get("status", asset.status);
-        row.get("priority", asset.priority);
-        row.get("asset_tag", asset.assetTag);
-        row.get("parent_name", asset.parentName);
+        fetchWebAsset(row, asset);
 
         return {};
     } catch (const tntdb::NotFound&) {
@@ -1124,9 +1167,9 @@ Expected<std::vector<uint32_t>> selectAssetsByParent(uint32_t parentId)
     )";
 
     try {
-        tnt::Connection conn;
+        tnt::Connection       conn;
         std::vector<uint32_t> ids;
-        for(const auto& it: conn.select(sql, "parentId"_p = parentId)) {
+        for (const auto& it : conn.select(sql, "parentId"_p = parentId)) {
             ids.emplace_back(it.get<uint32_t>("id"));
         }
         return ids;
@@ -1150,9 +1193,9 @@ Expected<std::vector<uint32_t>> selectAssetDeviceLinksSrc(uint32_t elementId)
             id_asset_device_src = :src
     )";
     try {
-        tnt::Connection conn;
+        tnt::Connection       conn;
         std::vector<uint32_t> ids;
-        for(const auto& it: conn.select(sql, "src"_p = elementId)) {
+        for (const auto& it : conn.select(sql, "src"_p = elementId)) {
             ids.emplace_back(it.get<uint32_t>("id_asset_device_dest"));
         }
         return ids;
@@ -1160,5 +1203,139 @@ Expected<std::vector<uint32_t>> selectAssetDeviceLinksSrc(uint32_t elementId)
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
 }
+
+// =====================================================================================================================
+
+Expected<uint32_t> maxNumberOfPowerLinks()
+{
+    static const std::string sql = R"(
+        SELECT
+            MAX(power_src_count) as maxCount
+        FROM
+            (SELECT COUNT(*) power_src_count FROM t_bios_asset_link
+                GROUP BY id_asset_device_dest) pwr
+    )";
+
+    try {
+        tnt::Connection conn;
+        auto            res = conn.selectRow(sql);
+        return res.get<uint32_t>("maxCount");
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::InternalError).format(e.what()));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<uint32_t> maxNumberOfAssetGroups()
+{
+    static const std::string sql = R"(
+        SELECT
+            MAX(grp_count) as maxCount
+        FROM
+            ( SELECT COUNT(*) grp_count FROM t_bios_asset_group_relation
+                GROUP BY id_asset_element) elmnt_grp
+    )";
+
+    try {
+        tnt::Connection conn;
+        auto            res = conn.selectRow(sql);
+        return res.get<uint32_t>("maxCount");
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::InternalError).format(e.what()));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<std::vector<std::string>> selectExtRwAttributesKeytags()
+{
+    static const std::string sql = R"(
+        SELECT
+            DISTINCT(keytag)
+        FROM
+            v_bios_asset_ext_attributes
+        WHERE
+            read_only = 0
+        ORDER BY keytag
+    )";
+
+    try {
+        tnt::Connection          conn;
+        std::vector<std::string> ret;
+        for (const auto& row : conn.select(sql)) {
+            ret.push_back(row.get("keytag"));
+        }
+        return ret;
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::InternalError).format(e.what()));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<std::vector<WebAssetElement>> selectAssetElementAll(const std::optional<uint32_t>& dc)
+{
+    std::string sql = webAssetSql();
+    if (dc) {
+        sql += R"(
+            WHERE v.id in (
+                SELECT p.id_asset_element
+                FROM v_bios_asset_element_super_parent p
+                WHERE
+                    :containerid in ( p.id_asset_element, p.id_parent1, p.id_parent2, p.id_parent3, p.id_parent4,
+                        p.id_parent5, p.id_parent6, p.id_parent7, p.id_parent8, p.id_parent9, p.id_parent10)
+            )
+        )";
+    }
+
+    try {
+        tnt::Connection              db;
+        std::vector<WebAssetElement> list;
+        tnt::Rows                    result;
+        if (dc) {
+            result = db.select(sql, "containerid"_p = *dc);
+        } else {
+            result = db.select(sql);
+        }
+
+        for (const auto& row : db.select(sql)) {
+            WebAssetElement& asset = list.emplace_back();
+            fetchWebAsset(row, asset);
+        }
+
+        return list;
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::InternalError).format(e.what()));
+    }
+}
+
+// =====================================================================================================================
+
+Expected<std::vector<std::string>> selectGroupNames(uint32_t id)
+{
+    static const std::string sql = R"(
+        SELECT
+            v2.name
+        FROM v_bios_asset_group_relation v1
+        JOIN v_bios_asset_element v2
+            ON v1.id_asset_group=v2.id
+            WHERE v1.id_asset_element=:id
+    )";
+
+    try {
+        tnt::Connection conn;
+
+        std::vector<std::string> result;
+        for(const auto& row: conn.select(sql, "id"_p = id)) {
+            result.push_back(row.get("name"));
+        }
+        return result;
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what(), id));
+    }
+}
+
+// =====================================================================================================================
 
 } // namespace fty::asset::db
