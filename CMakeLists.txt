@@ -29,11 +29,19 @@ etn_target(shared ${PROJECT_NAME}
         src/import.h
         src/export.cpp
         src/export.h
+        src/edit.cpp
+        src/edit.h
+        src/actions-get.cpp
+        src/actions-get.h
+        src/actions-post.cpp
+        src/actions-post.h
     USES
         fty-cmake-rest
         tntnet
         fty_common_rest
         fty-asset
+        fty_common_messagebus
+        fty_common_dto
     TARGET_DESTINATION /usr/lib/tntnet
 )
 
