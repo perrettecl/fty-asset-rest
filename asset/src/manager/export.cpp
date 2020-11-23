@@ -53,7 +53,7 @@ protected:
     std::vector<std::string> _buf;
 };
 
-Expected<std::string> exportCsv(const std::optional<db::AssetElement>& dc)
+Expected<std::string> AssetManager::exportCsv(const std::optional<db::AssetElement>& dc)
 {
     std::stringstream ss;
     LineCsvSerializer lcs(ss);
@@ -123,9 +123,9 @@ Expected<std::string> exportCsv(const std::optional<db::AssetElement>& dc)
     }
 
     for (const db::WebAssetElement& el : *res) {
-        auto location = db::idToNameExtName(el.parentId);
-        if (!location) {
-            return unexpected(location.error());
+        std::string location;
+        if (auto ret = db::idToNameExtName(el.parentId)) {
+            location = ret->second;
         }
 
         auto extAttrsRet = db::selectExtAttributes(el.id);
@@ -154,7 +154,7 @@ Expected<std::string> exportCsv(const std::optional<db::AssetElement>& dc)
         }
 
         lcs.add(trimmed(subtype_name));
-        lcs.add(location->second);
+        lcs.add(location);
         lcs.add(el.status);
         lcs.add("P" + std::to_string(el.priority));
         lcs.add(el.assetTag);

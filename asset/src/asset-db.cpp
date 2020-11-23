@@ -17,7 +17,7 @@ static std::string webAssetSql()
         SELECT
             v.id                as id,
             v.name              as name,
-            ext.value           as extName
+            ext.value           as extName,
             v.id_type           as typeId,
             v.type_name         as typeName,
             v.subtype_id        as subTypeId,
@@ -27,7 +27,7 @@ static std::string webAssetSql()
             v.parent_name       as parentName,
             v.status            as status,
             v.priority          as priority,
-            v.asset_tag         as assetTag,
+            v.asset_tag         as assetTag
         FROM
             v_web_element v
         LEFT JOIN
