@@ -38,11 +38,15 @@ unsigned Read::run()
     auto type  = m_request.queryArg<std::string>("type");
 
     if (!strId) {
-        throw rest::Error("request-param-required", "id");
+        throw rest::errors::RequestParamRequired("id");
     }
 
-    if (!type || !persist::type_to_typeid(*type)) {
-        throw rest::Error("one of datacenter/room/row/rack/group/device"_tr);
+    if (!type) {
+        throw rest::errors::RequestParamRequired("type");
+    }
+
+    if (!persist::type_to_typeid(*type)) {
+        throw rest::errors::RequestParamBad("type", *type, "one of datacenter/room/row/rack/group/device"_tr);
     }
 
     uint32_t id;
@@ -51,13 +55,13 @@ unsigned Read::run()
     } else if (auto res2 = checkElementIdentifier("dev", *type + *strId)) {
         id = *res2;
     } else {
-        throw rest::Error("element-not-found", *strId);
+        throw rest::errors::ElementNotFound(*strId);
     }
 
     std::string jsonAsset = getJsonAsset(id);
 
     if (jsonAsset.empty()) {
-        throw rest::Error("get json asset failed."_tr);
+        throw rest::errors::Internal("get json asset failed."_tr);
     }
     m_reply << jsonAsset << "\n\n";
     return HTTP_OK;

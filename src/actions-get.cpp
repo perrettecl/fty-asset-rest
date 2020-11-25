@@ -18,10 +18,10 @@ unsigned ActionsGet::run()
 
     Expected<std::string> id = m_request.queryArg<std::string>("id");
     if (!id) {
-        throw rest::Error("request-param-required", "id");
+        throw rest::errors::RequestParamRequired("id");
     }
     if (!persist::is_ok_name(id->c_str())) {
-        throw rest::Error("request-param-bad", "id", *id, "valid asset name"_tr);
+        throw rest::errors::RequestParamBad("id", *id, "valid asset name"_tr);
     }
 
     auto msgbus = std::unique_ptr<messagebus::MessageBus>(
@@ -40,7 +40,7 @@ unsigned ActionsGet::run()
 
     if (msgReply.metaData()[messagebus::Message::STATUS] != "ok") {
         logError("Request to fty-nut-command failed.");
-        throw rest::Error("precondition-failed", "Request to fty-nut-command failed."_tr);
+        throw rest::errors::PreconditionFailed("Request to fty-nut-command failed."_tr);
     }
 
     dto::commands::GetCommandsReplyDto replyDto;

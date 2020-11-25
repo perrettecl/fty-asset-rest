@@ -24,9 +24,14 @@ unsigned Edit::run()
     }
 
     Expected<std::string> id = m_request.queryArg<std::string>("id");
-    if (!id || !persist::is_ok_name(id->c_str())) {
+    if (!id) {
         auditError("Request CREATE OR UPDATE asset FAILED: {}"_tr, "Asset id is not set"_tr);
-        throw rest::Error("request-param-bad", "id");
+        throw rest::errors::RequestParamRequired("id");
+    }
+
+    if (!persist::is_ok_name(id->c_str())) {
+        auditError("Request CREATE OR UPDATE asset FAILED: {}"_tr, "Asset id is not valid"_tr);
+        throw rest::errors::RequestParamBad("id", *id, "Valid id"_tr);
     }
 
     std::string                 asset_json(m_request.body());
@@ -47,14 +52,14 @@ unsigned Edit::run()
             if (*id == "rackcontroller-0" || persist::is_container(type)) {
                 logDebug("Element {} cannot be inactivated.", *id);
                 auditError("Request CREATE OR UPDATE asset id {} FAILED"_tr, *id);
-                throw rest::Error("action-forbidden", "Inactivation of this asset"_tr);
+                throw rest::errors::ActionForbidden("inactivate", "Inactivation of this asset"_tr);
             }
         } else {
             si_id->setValue(id);
         }
     } catch (const std::exception& e) {
         auditError("Request CREATE OR UPDATE asset id {} FAILED"_tr, *id);
-        throw rest::Error("request-param-bad", e.what());
+        throw rest::errors::Internal(e.what());
     }
 
     try {
@@ -70,7 +75,7 @@ unsigned Edit::run()
         }
     } catch (const std::exception& e) {
         auditError("Request CREATE OR UPDATE asset id {} FAILED"_tr, id);
-        throw rest::Error("licensing-err", e.what());
+        throw rest::errors::LicensingErr(e.what());
     }
 
     CsvMap cm;
@@ -85,11 +90,11 @@ unsigned Edit::run()
     } catch (const std::invalid_argument& e) {
         logError(e.what());
         auditError("Request CREATE OR UPDATE asset id {} FAILED"_tr, *id);
-        throw rest::Error("bad-request-document", e.what());
+        throw rest::errors::BadRequestDocument(e.what());
     } catch (const std::exception& e) {
         std::string err = TRANSLATE_ME("See log for more details");
         auditError("Request CREATE OR UPDATE asset id {} FAILED"_tr, *id);
-        throw rest::Error("internal-error", e.what());
+        throw rest::errors::Internal(e.what());
     }
 
     // PUT /asset is currently used to update an existing device (only asset_element and ext_attributes)
@@ -97,12 +102,12 @@ unsigned Edit::run()
     // empty document
     if (cm.cols() == 0 || cm.rows() == 0) {
         auditError("Request CREATE OR UPDATE asset id {} FAILED", *id);
-        throw rest::Error("bad-request-document", "Cannot import empty document."_tr);
+        throw rest::errors::BadRequestDocument("Cannot import empty document."_tr);
     }
 
     if (!cm.hasTitle("type")) {
         auditError("Request CREATE OR UPDATE asset id {} FAILED", *id);
-        throw rest::Error("request-param-required", "type"_tr);
+        throw rest::errors::RequestParamRequired("type"_tr);
     }
 
     logDebug("starting load");
@@ -110,7 +115,7 @@ unsigned Edit::run()
     if (auto res = import.process(true)) {
         const auto& imported = import.items();
         if (imported.find(1) == imported.end()) {
-            throw rest::Error("internal-error", "Request CREATE OR UPDATE asset id {} FAILED"_tr.format(*id));
+            throw rest::errors::Internal("Request CREATE OR UPDATE asset id {} FAILED"_tr.format(*id));
         }
 
         if (imported.at(1)) {
@@ -119,7 +124,7 @@ unsigned Edit::run()
             std::string agent_name = generateMlmClientId("web.asset_put");
             if (auto sent = sendConfigure(*(imported.at(1)), import.operation(), agent_name); !sent) {
                 logError(sent.error());
-                throw rest::Error("internal-error", sent.error());
+                throw rest::errors::Internal(sent.error());
             }
 
             // no unexpected errors was detected
@@ -127,16 +132,16 @@ unsigned Edit::run()
             auto ret = db::idToNameExtName(imported.at(1)->id);
             if (!ret) {
                 logError(ret.error());
-                throw rest::Error("internal-error", ret.error());
+                throw rest::errors::Internal(ret.error());
             }
             m_reply << "{\"id\": \"" << ret->first << "\"}";
             auditInfo("Request CREATE OR UPDATE asset id {} SUCCESS"_tr, *id);
             return HTTP_OK;
         } else {
-            throw rest::Error("internal-error", "Import failed"_tr);
+            throw rest::errors::Internal("Import failed"_tr);
         }
     } else {
-        throw rest::Error("internal-error", res.error());
+        throw rest::errors::Internal(res.error());
     }
 }
 

@@ -23,7 +23,7 @@ unsigned Delete::run()
     Expected<std::string> ids = m_request.queryArg<std::string>("ids");
     if (!id && !ids) {
         auditError("Request DELETE asset FAILED"_tr);
-        throw rest::Error("request-param-required", "id");
+        throw rest::errors::RequestParamRequired("id");
     }
 
     if (id) {
@@ -36,13 +36,13 @@ unsigned Delete::deleteOneAsset(const std::string& idStr)
 {
     if (!persist::is_ok_name(idStr.c_str())) {
         auditError("Request DELETE asset id {} FAILED"_tr, idStr);
-        throw rest::Error("request-param-bad", "id", idStr, "valid asset name"_tr);
+        throw rest::errors::RequestParamBad("id", idStr, "valid asset name"_tr);
     }
 
     Expected<int64_t> dbid = db::nameToAssetId(idStr);
     if (!dbid) {
         auditError("Request DELETE asset id {} FAILED: {}"_tr, idStr, dbid.error());
-        throw rest::Error(dbid.error());
+        throw rest::errors::DbErr(dbid.error());
     }
 
     auto res = AssetManager::deleteAsset(uint32_t(*dbid));
@@ -50,7 +50,7 @@ unsigned Delete::deleteOneAsset(const std::string& idStr)
         logError(res.error());
         std::string reason = "Asset is in use, remove children/power source links first."_tr;
         auditError("Request DELETE asset id {} FAILED"_tr, idStr);
-        throw rest::Error("data-conflict", idStr, reason);
+        throw rest::errors::DataConflict(idStr, reason);
     }
 
     std::string agent_name = generateMlmClientId("web.asset_delete");
@@ -60,9 +60,8 @@ unsigned Delete::deleteOneAsset(const std::string& idStr)
         return HTTP_OK;
     } else {
         logError(ret.error());
-        std::string msg = ("Error during configuration sending of asset change notification. Consult system log."_tr);
         auditError("Request DELETE asset id {} FAILED"_tr, idStr);
-        throw rest::Error("internal-error", msg);
+        throw rest::errors::Internal("Error during configuration sending of asset change notification. Consult system log."_tr);
     }
 }
 
@@ -83,7 +82,7 @@ unsigned Delete::deleteAssets(const std::string& idsStr)
     for (const auto& id : ids) {
         if (!persist::is_ok_name(id.c_str())) {
             auditError("Request DELETE asset id {} FAILED", id);
-            throw rest::Error("request-param-bad", "id", id, "valid asset name"_tr);
+            throw rest::errors::RequestParamBad("id", id, "valid asset name"_tr);
         }
     }
 
@@ -94,7 +93,7 @@ unsigned Delete::deleteAssets(const std::string& idsStr)
         } else {
             logError(dbid.error());
             auditError("Request DELETE asset id {} FAILED", id);
-            throw rest::Error("request-param-bad", "ids", idsStr, "valid asset name"_tr);
+            throw rest::errors::RequestParamBad("ids", idsStr, "valid asset name"_tr);
         }
     }
 

@@ -25,14 +25,18 @@ unsigned List::run()
     }
 
     if (m_request.type() != rest::Request::Type::Get) {
-        throw rest::Error("method-not-allowed", m_request.type());
+        throw rest::errors::MethodNotAllowed(m_request.type());
     }
 
     Expected<std::string> assetType    = m_request.queryArg<std::string>("type");
     Expected<std::string> subtype = m_request.queryArg<std::string>("subtype");
 
-    if (!assetType || !persist::type_to_typeid(*assetType)) {
-        throw rest::Error("request-param-bad", "type", "datacenter/room/row/rack/group/device");
+    if (!assetType) {
+        throw rest::errors::RequestParamRequired("type");
+    }
+
+    if (!persist::type_to_typeid(*assetType)) {
+        throw rest::errors::RequestParamBad("type", *assetType, "datacenter/room/row/rack/group/device");
     }
 
     std::vector<std::string> subtypes;
@@ -40,7 +44,7 @@ unsigned List::run()
         subtypes = split(*subtype, ",");
         for (const auto& it : subtypes) {
             if (!persist::subtype_to_subtypeid(it)) {
-                throw rest::Error("request-param-bad", "subtype", subtype, "See RFC-11 for possible values"_tr);
+                throw rest::errors::RequestParamBad("subtype", subtype, "See RFC-11 for possible values"_tr);
             }
         }
     }
@@ -52,13 +56,13 @@ unsigned List::run()
         // Get data
         auto allAssetsShort = AssetManager::getItems(*assetType, assetSubtype);
         if (!allAssetsShort) {
-            throw rest::Error(allAssetsShort.error());
+            throw rest::errors::Internal(allAssetsShort.error());
         }
 
         for (const auto& [id, name] : *allAssetsShort) {
             auto assetNames = db::idToNameExtName(id);
             if (!assetNames) {
-                throw rest::Error("internal-error", "Database failure"_tr);
+                throw rest::errors::Internal("Database failure"_tr);
             }
 
             auto& ins = val.append();

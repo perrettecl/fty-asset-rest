@@ -38,7 +38,7 @@ unsigned Create::run()
     auto ret = AssetManager::createAsset(assetJson, user.login());
     if (!ret) {
         auditError(ret.error());
-        throw rest::Error(ret.error());
+        throw rest::errors::Internal(ret.error());
     }
 
     return HTTP_OK;

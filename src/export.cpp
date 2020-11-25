@@ -1,10 +1,10 @@
 #include "export.h"
 #include "asset/asset-db.h"
+#include "asset/asset-manager.h"
+#include <chrono>
 #include <fty/rest/component.h>
 #include <fty_common_asset_types.h>
-#include <chrono>
 #include <regex>
-#include "asset/asset-manager.h"
 
 namespace fty::asset {
 
@@ -15,13 +15,12 @@ unsigned Export::run()
         throw rest::Error(ret.error());
     }
 
-    auto dc = m_request.queryArg<std::string>("dc");
+    auto                            dc = m_request.queryArg<std::string>("dc");
     std::optional<db::AssetElement> dcAsset;
     if (dc) {
         auto asset = db::selectAssetElementByName(*dc);
         if (!asset || asset->typeId != persist::type_to_typeid("datacenter")) {
-            throw rest::Error(
-                "request-param-bad", "dc", "not a datacenter"_tr, "existing asset which is a datacenter"_tr);
+            throw rest::errors::RequestParamBad("dc", "not a datacenter"_tr, "existing asset which is a datacenter"_tr);
         }
         dcAsset = *asset;
     }
@@ -34,23 +33,24 @@ unsigned Export::run()
     if (dcAsset != std::nullopt) {
         auto dcENameRet = db::idToNameExtName(dcAsset->id);
         if (!dcENameRet) {
-            throw rest::Error("element-not-found", dcAsset->id);
+            throw rest::errors::ElementNotFound(dcAsset->id);
         }
-        //escape special characters
+        // escape special characters
         std::string dcEName = std::regex_replace(dcENameRet->second, std::regex("( |\t)"), "_");
-        m_reply.setHeader(tnt::httpheader::contentDisposition, "attachment; filename=\"asset_export_" + dcEName + "_" + strTime + ".csv\"");
-    }
-    else {
-        m_reply.setHeader(tnt::httpheader::contentDisposition, "attachment; filename=\"asset_export" + strTime + ".csv\"");
+        m_reply.setHeader(tnt::httpheader::contentDisposition,
+            "attachment; filename=\"asset_export_" + dcEName + "_" + strTime + ".csv\"");
+    } else {
+        m_reply.setHeader(
+            tnt::httpheader::contentDisposition, "attachment; filename=\"asset_export" + strTime + ".csv\"");
     }
 
     auto ret = AssetManager::exportCsv(dcAsset);
     if (ret) {
-        m_reply.setContentType ("text/csv;charset=UTF-8");
+        m_reply.setContentType("text/csv;charset=UTF-8");
         m_reply << "\xef\xbb\xbf";
         m_reply << *ret;
     } else {
-        throw rest::Error("internal-error", ret.error());
+        throw rest::errors::Internal(ret.error());
     }
 
     return HTTP_OK;

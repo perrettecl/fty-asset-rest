@@ -28,13 +28,13 @@ unsigned Import::run()
     // Content size = body + something. So max size of body is about 125k
     if (m_request.contentSize() > 128 * 1024) {
         auditError("Request CREATE asset_import FAILED {}"_tr, "can't import things larger than 128K"_tr);
-        throw rest::Error("content-too-big", "128k");
+        throw rest::errors::ContentTooBig("128k");
     }
 
     if (auto part = m_request.multipart("assets")) {
         auto res = AssetManager::importCsv(*part, user.login());
         if (!res) {
-            throw rest::Error("internal-error", res.error());
+            throw rest::errors::Internal(res.error());
         }
         Result result;
         for (const auto& [row, el] : *res) {
@@ -51,7 +51,7 @@ unsigned Import::run()
         return HTTP_OK;
     } else {
         auditError("Request CREATE asset_import FAILED {}"_tr, part.error());
-        throw rest::Error("request-param-required", "file=assets");
+        throw rest::errors::RequestParamRequired("file=assets");
     }
 }
 

@@ -20,15 +20,15 @@ unsigned ActionsPost::run()
 
     Expected<std::string> id = m_request.queryArg<std::string>("id");
     if (!id) {
-        throw rest::Error("request-param-required", "id");
+        throw rest::errors::RequestParamRequired("id");
     }
     if (!persist::is_ok_name(id->c_str())) {
-        throw rest::Error("request-param-bad", "id", *id, "valid asset name"_tr);
+        throw rest::errors::RequestParamBad("id", *id, "valid asset name"_tr);
     }
 
     auto item = db::nameToExtName(*id);
     if (!item) {
-        throw rest::Error("internal-error", item.error());
+        throw rest::errors::Internal(item.error());
     }
 
     auto msgbus = std::unique_ptr<messagebus::MessageBus>(
@@ -64,7 +64,7 @@ unsigned ActionsPost::run()
     } catch (const std::exception& e) {
         logError("Error while parsing document: {}", e.what());
         auditError("Request CREATE asset_actions asset {} FAILED", *item);
-        throw rest::Error("bad-request-document", "Error while parsing document: {}"_tr.format(e.what()));
+        throw rest::errors::BadRequestDocument("Error while parsing document: {}"_tr.format(e.what()));
     }
 
     messagebus::Message msgRequest;
@@ -77,7 +77,7 @@ unsigned ActionsPost::run()
     if (msgReply.metaData()[messagebus::Message::STATUS] != "ok") {
         logError("Request to fty-nut-command failed.");
         auditError("Request CREATE asset_actions asset {} FAILED"_tr, *item);
-        throw rest::Error("precondition-failed", "Request to fty-nut-command failed."_tr);
+        throw rest::errors::PreconditionFailed("Request to fty-nut-command failed."_tr);
     }
 
     auditInfo("Request CREATE asset_actions asset {} SUCCESS", *item);
