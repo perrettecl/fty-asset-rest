@@ -26,7 +26,7 @@ etn_test(asset-test
         pthread
 )
 
-etn_coverage(asset-test)
+#etn_coverage(asset-test)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_libraries(asset-test PRIVATE stdc++fs)
