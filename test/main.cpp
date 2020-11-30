@@ -1,4 +1,6 @@
 #define CATCH_CONFIG_RUNNER
+#define CATCH_CONFIG_DISABLE_EXCEPTIONS
+
 #include <catch2/catch.hpp>
 #include <mariadb/mysql.h>
 #include <filesystem>

@@ -1,0 +1,30 @@
+Source: fty-asset-rest
+Maintainer: Clement Perrette <clementperrette@eaton.com>
+Build-Depends:
+    cmake (>=3.0),
+    debhelper (>= 9),
+    fty-cmake-dev,
+    fty-utils-dev,
+    libfty-common-logging-dev,
+    libfty-pack-dev,
+    libfty-common-messagebus-dev,
+    libfty-common-rest-dev,
+    libtntnet-dev,
+    fty-cmake-rest-dev,
+    libfty-security-wallet-dev,
+    libfty-common-socket-dev,
+    libfty-common-dto-dev,
+    libfty-asset-activator-dev,
+    libfty-common-dev,
+    libfty-common-mlm,
+    libfty-proto-dev,
+    libcxxtools-dev
+Standards-Version: 1.0.0
+Section: devel
+Priority: extra
+
+Package: fty-asset-rest
+Architecture: any
+Depends:    ${shlibs:Depends},
+            ${misc:Depends}
+Description: fty-asset-rest service
