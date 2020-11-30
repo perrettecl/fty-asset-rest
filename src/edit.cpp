@@ -92,7 +92,6 @@ unsigned Edit::run()
         auditError("Request CREATE OR UPDATE asset id {} FAILED"_tr, *id);
         throw rest::errors::BadRequestDocument(e.what());
     } catch (const std::exception& e) {
-        std::string err = TRANSLATE_ME("See log for more details");
         auditError("Request CREATE OR UPDATE asset id {} FAILED"_tr, *id);
         throw rest::errors::Internal(e.what());
     }

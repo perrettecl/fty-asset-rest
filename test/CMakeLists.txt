@@ -23,3 +23,7 @@ etn_test(asset-test
         cxxtools
         yaml-cpp
 )
+
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_libraries(asset-test PRIVATE stdc++fs)
+endif()
