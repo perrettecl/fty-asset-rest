@@ -77,53 +77,53 @@ using SelectCallback = std::function<void(const tnt::Row&)>;
 
 /// Converts asset internal name to database id
 /// @param assetName internal name of the asset
-/// @returns asset is or error
+/// @return asset is or error
 Expected<int64_t> nameToAssetId(const std::string& assetName); //!test
 
 /// Converts database id to internal name and extended (unicode) name
 /// @param assetId asset id
-/// @returns pair of name and extended name or error
+/// @return pair of name and extended name or error
 Expected<std::pair<std::string, std::string>> idToNameExtName(uint32_t assetId); //!test
 
 /// Converts asset's extended name to its internal name
 /// @param assetExtName asset external name
-/// @returns internal name or error
+/// @return internal name or error
 Expected<std::string> extNameToAssetName(const std::string& assetExtName); //!test
 
 /// Converts internal name to extended name
 /// @param assetName asset internal name
-/// @returns external name or error
+/// @return external name or error
 Expected<std::string> nameToExtName(std::string assetName);
 
 /// Converts asset's extended name to id
 /// @param assetExtName asset external name
-/// @returns id or error
+/// @return id or error
 Expected<int64_t> extNameToAssetId(const std::string& assetExtName); //!test
 
 /// select basic information about asset element by name
 /// @param name asset internal or external name
-/// @returns @ref AssetElement or error
+/// @return @ref AssetElement or error
 Expected<AssetElement> selectAssetElementByName(const std::string& name);  //!test
 
 /// Selects all data about asset in WebAssetElement
 /// @param elementId asset element id
-/// @returns @ref WebAssetElement or error
+/// @return @ref WebAssetElement or error
 Expected<WebAssetElement> selectAssetElementWebById(uint32_t elementId); //!test
 
 /// Selects all data about asset in WebAssetElement
 /// @param elementId asset element id
 /// @param asset @ref WebAssetElement to select to
-/// @returns nothing or error
+/// @return nothing or error
 Expected<void> selectAssetElementWebById(uint32_t elementId, WebAssetElement& asset); //!test
 
 /// Selects all ext_attributes of asset
 /// @param elementId asset element id
-/// @returns Attributes map or error
+/// @return Attributes map or error
 Expected<Attributes> selectExtAttributes(uint32_t elementId); //!test
 
 /// get information about the groups element belongs to
 /// @param elementId element id
-/// @returns groups map or error
+/// @return groups map or error
 Expected<std::map<uint32_t, std::string>> selectAssetElementGroups(uint32_t elementId); //!test
 
 
@@ -134,7 +134,7 @@ Expected<std::map<uint32_t, std::string>> selectAssetElementGroups(uint32_t elem
 /// @param status status string
 /// @param priority priority
 /// @param assetTag asset tag
-/// @returns affected rows count or error
+/// @return affected rows count or error
 Expected<uint> updateAssetElement(tnt::Connection& conn, uint32_t elementId, uint32_t parentId,
     const std::string& status, uint16_t priority, const std::string& assetTag); //!test
 
@@ -142,79 +142,79 @@ Expected<uint> updateAssetElement(tnt::Connection& conn, uint32_t elementId, uin
 /// @param conn database established connection
 /// @param elementId asset element id
 /// @param readOnly read only flag
-/// @returns deleted rows or error
+/// @return deleted rows or error
 Expected<uint> deleteAssetExtAttributesWithRo(tnt::Connection& conn, uint32_t elementId, bool readOnly); //!test
 
 /// Insert given ext attributes map into t_bios_asset_ext_attributes
 /// @param conn database established connection
 /// @param attributes attributes map - {key, value}
 /// @param readOnly 'read_only' status
-/// @returns affected rows count or error
+/// @return affected rows count or error
 Expected<uint> insertIntoAssetExtAttributes(
     tnt::Connection& conn, uint32_t elementId, const std::map<std::string, std::string>& attributes, bool readOnly); //!test
 
 /// Delete asset from all group
 /// @param conn database established connection
 /// @param elementId asset element id to delete
-/// @returns count of affected rows or error
+/// @return count of affected rows or error
 Expected<uint> deleteAssetElementFromAssetGroups(tnt::Connection& conn, uint32_t elementId); //!test
 
 /// Inserts info about an asset
 /// @param conn database established connection
 /// @param element element to insert
 /// @param update update or insert flag
-/// @returns count of affected rows or error
+/// @return count of affected rows or error
 Expected<uint32_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElement& element, bool update); //!test
 
 /// Inserts asset into groups
 /// @param conn database established connection
 /// @param groups groups id to insert
 /// @param elementId element id
-/// @returns count of affected rows or error
+/// @return count of affected rows or error
 Expected<uint> insertElementIntoGroups(tnt::Connection& conn, const std::set<uint32_t>& groups, uint32_t elementId); //!test
 
 /// Deletes all links which have given asset as 'dest'
 /// @param conn database established connection
 /// @param elementId element id
-/// @returns count of affected rows or error
+/// @return count of affected rows or error
 Expected<uint> deleteAssetLinksTo(tnt::Connection& conn, uint32_t elementId); //!test
 
 /// Inserts powerlink info
 /// @param conn database established connection
 /// @param link powerlink info
-/// @returns inserted id or error
+/// @return inserted id or error
 Expected<int64_t> insertIntoAssetLink(tnt::Connection& conn, const AssetLink& link); //!test
 
 /// Inserts powerlink infos
 /// @param conn database established connection
 /// @param links list of powerlink info
-/// @returns count of inserted links or error
+/// @return count of inserted links or error
 Expected<uint> insertIntoAssetLinks(tnt::Connection& conn, const std::vector<AssetLink>& links); //! test
 
 /// Inserts name<->device_type relation
 /// @param conn database established connection
 /// @param deviceTypeId device type
 /// @param deviceName device name
-/// @returns new relation id or error
+/// @return new relation id or error
 Expected<uint16_t> insertIntoMonitorDevice(tnt::Connection& conn, uint16_t deviceTypeId, const std::string& deviceName);  //! test
 
 /// Inserts monitor_id<->element_id relation
 /// @param conn database established connection
 /// @param monitorId monitor id
 /// @param elementId element id
-/// @returns new relation id or error
+/// @return new relation id or error
 Expected<int64_t> insertIntoMonitorAssetRelation(tnt::Connection& conn, uint16_t monitorId, uint32_t elementId); //! test
 
 /// Selects id based on name from v_bios_device_type
 /// @param conn database established connection
 /// @param deviceTypeName device type name
-/// @returns device type id or error
+/// @return device type id or error
 Expected<uint16_t> selectMonitorDeviceTypeId(tnt::Connection& conn, const std::string& deviceTypeName); //! test
 
 /// Selects parents of given device
 /// @param id asset element id
 /// @param cb callback function
-/// @returns nothing or error
+/// @return nothing or error
 Expected<void> selectAssetElementSuperParent(uint32_t id, SelectCallback&& cb); //!test
 
 /// Selects assets from given container (DB, room, rack, ...) without - accepted values: "location", "powerchain" or
@@ -225,74 +225,74 @@ Expected<void> selectAssetElementSuperParent(uint32_t id, SelectCallback&& cb); 
 /// @param subtypes asset subtypes to select
 /// @param status asset status
 /// @param cb callback function
-/// @returns nothing or error
+/// @return nothing or error
 Expected<void> selectAssetsByContainer(tnt::Connection& conn, uint32_t elementId, std::vector<uint16_t> types,
     std::vector<uint16_t> subtypes, const std::string& without, const std::string& status, SelectCallback&& cb);
 
 /// Gets data about the links the specified device belongs to
 /// @param elementId element id
 /// @param linkTypeId link type id
-/// @returns list of links or error
+/// @return list of links or error
 Expected<std::vector<DbAssetLink>> selectAssetDeviceLinksTo(uint32_t elementId, uint8_t linkTypeId); //! test
 
 /// Selects all devices of certain type/subtype
 /// @param typeId type id
 /// @param subtypeId subtype id
-/// @returns map of devices or error
+/// @return map of devices or error
 Expected<std::map<uint32_t, std::string>> selectShortElements(uint16_t typeId, uint16_t subtypeId); //! test
 
 /// Returns how many times is gived a couple keytag/value in t_bios_asset_ext_attributes
 /// @param keytag keytag
 /// @param value asset name
-/// @returns count or error
+/// @return count or error
 Expected<int> countKeytag(const std::string& keytag, const std::string& value); //! test
 
 /// Converts asset id to monitor id
 /// @param assetElementId asset element id
-/// @returns monitor id or error
+/// @return monitor id or error
 Expected<uint16_t> convertAssetToMonitor(uint32_t assetElementId);
 
 /// Deletes given asset from t_bios_monitor_asset_relation
 /// @param conn database established connection
 /// @param id asset element id
-/// @returns count of affected rows or error
+/// @return count of affected rows or error
 Expected<uint> deleteMonitorAssetRelationByA(tnt::Connection& conn, uint32_t id); //! test
 
 /// Deletes asset from t_bios_asset_element
 /// @param conn database established connection
 /// @param elementId asset element id
-/// @returns count of affected rows or error
+/// @return count of affected rows or error
 Expected<uint> deleteAssetElement(tnt::Connection& conn, uint32_t elementId); //! test
 
 /// Deletes all data about a group
 /// @param conn database established connection
 /// @param assetGroupId asset group id
-/// @returns count of affected rows or error
+/// @return count of affected rows or error
 Expected<uint> deleteAssetGroupLinks(tnt::Connection& conn, uint32_t assetGroupId); //! test
 
 /// Selects childrent element id
 /// @param parentId parent id
-/// @returns list of children or error
+/// @return list of children or error
 Expected<std::vector<uint32_t>> selectAssetsByParent(uint32_t parentId);
 
 /// Selects all corresponding links for element
 /// @param elementId element id
-/// @returns list of devices where element is linked or error
+/// @return list of devices where element is linked or error
 Expected<std::vector<uint32_t>> selectAssetDeviceLinksSrc(uint32_t elementId); //! test
 
 Expected<std::map<std::string, int>> readElementTypes();
 Expected<std::map<std::string, int>> readDeviceTypes();
 
 /// Selects maximum number of power sources for device in the system
-/// @returns  number of power sources or error
+/// @return  number of power sources or error
 Expected<uint32_t> maxNumberOfPowerLinks();
 
 /// Selects maximal number of groups in the system
-/// @returns number of groups or error
+/// @return number of groups or error
 Expected<uint32_t> maxNumberOfAssetGroups();
 
 /// Selects all read-write ext attributes
-/// @returns attribures names or error
+/// @return attribures names or error
 Expected<std::vector<std::string>> selectExtRwAttributesKeytags();
 
 /// Selects everything from v_web_element
@@ -302,6 +302,6 @@ Expected<std::vector<WebAssetElement>> selectAssetElementAll(const std::optional
 
 /// Selects all group names for given element id
 /// @param id asset element id
-/// @returns group names or error
+/// @return group names or error
 Expected<std::vector<std::string>> selectGroupNames(uint32_t id);
 } // namespace fty::asset::db

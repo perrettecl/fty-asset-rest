@@ -16,7 +16,7 @@ Build-Depends:
     libfty-common-dto-dev,
     libfty-asset-activator-dev,
     libfty-common-dev,
-    libfty-common-mlm,
+    libfty-common-mlm-dev,
     libfty-proto-dev,
     libcxxtools-dev
 Standards-Version: 1.0.0
