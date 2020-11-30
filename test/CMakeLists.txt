@@ -22,8 +22,13 @@ etn_test(asset-test
         tntdb
         cxxtools
         yaml-cpp
+        log4cplus
+        pthread
 )
+
+etn_coverage(asset-test)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_libraries(asset-test PRIVATE stdc++fs)
 endif()
+
