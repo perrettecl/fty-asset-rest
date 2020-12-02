@@ -49,7 +49,7 @@ etn_target(shared ${PROJECT_NAME}
 
 # discovery.xml for tntnet
 etn_configure_file(
-    conf/43_assets.xml.in
+    conf/53_assets.xml.in
 
     TARGET      ${PROJECT_NAME}
     DESTINATION /etc/tntnet/bios.d
