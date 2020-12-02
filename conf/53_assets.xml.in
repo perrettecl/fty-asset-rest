@@ -1,0 +1,83 @@
+<mapping>
+  <target>asset/list@lib${NAME}</target>
+  <url>^/api/v1/asset/(datacenter|room|row|rack|group|device)s.*$</url>
+  <args>
+    <type>$1</type>
+  </args>
+</mapping>
+
+<mapping>
+    <target>asset/read@lib${NAME}</target>
+    <url>^/api/v1/asset/?(datacenter|room|row|rack|group|device)?/?(.*)$</url>
+    <method>GET</method>
+    <args>
+        <id>$2</id>
+        <type>$1</type>
+    </args>
+</mapping>
+
+<mapping>
+  <target>asset/create@lib${NAME}</target>
+  <url>^/api/v1/asset/?$</url>
+  <method>POST</method>
+</mapping>
+
+
+
+<mapping>
+  <target>asset/delete@lib${NAME}</target>
+  <url>^/api/v1/asset/(.*)$</url>
+  <method>DELETE</method>
+  <args>
+    <id>$1</id>
+  </args>
+</mapping>
+
+<mapping>
+  <target>asset/import@lib${NAME}</target>
+  <url>^/api/v1/asset/import.*</url>
+</mapping>
+
+<mapping>
+  <target>asset/export@lib${NAME}</target>
+  <method>GET</method>
+  <url>^/api/v1/asset/export</url>
+</mapping>
+
+<mapping>
+  <target>asset/export@lib${NAME}</target>
+  <method>GET</method>
+  <url>^/api/v1/asset/export/(.*)</url>
+  <args>
+    <dc>$1</dc>
+  </args>
+</mapping>
+
+<mapping>
+  <target>asset/edit@lib${NAME}</target>
+  <url>^/api/v1/asset/(.*)$</url>
+  <method>PUT</method>
+  <args>
+    <id>$1</id>
+  </args>
+</mapping>
+
+<mapping>
+  <target>asset/actions/get@lib${NAME}</target>
+  <url>^/api/v1/asset/(.*)/actions$</url>
+  <method>GET</method>
+  <args>
+    <id>$1</id>
+  </args>
+</mapping>
+
+<mapping>
+  <target>asset/actions/post@lib${NAME}</target>
+  <url>^/api/v1/asset/(.*)/actions$</url>
+  <method>POST</method>
+  <args>
+    <id>$1</id>
+  </args>
+</mapping>
+
+
