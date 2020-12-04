@@ -14,7 +14,7 @@ struct Result : public pack::Node
     META(Result, okLines, errors);
 };
 
-unsigned Import::run()
+unsigned RestImport::run()
 {
     rest::User user(m_request);
     if (auto ret = checkPermissions(user.profile(), m_permissions); !ret) {
@@ -57,4 +57,4 @@ unsigned Import::run()
 
 } // namespace fty::asset
 
-registerHandler(fty::asset::Import)
+registerHandler(fty::asset::RestImport)

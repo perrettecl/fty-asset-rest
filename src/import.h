@@ -24,7 +24,7 @@
 
 namespace fty::asset {
 
-class Import: public rest::Runner
+class RestImport: public rest::Runner
 {
 public:
     INIT_REST("asset/import");

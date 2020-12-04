@@ -96,7 +96,7 @@ Expected<db::AssetElement> AssetManager::deleteAsset(const db::AssetElement& ass
     }
 
     // check if a logical_asset refer to the item we are trying to delete
-    if (db::countKeytag("logical_asset", asset.name) > 0) {
+    if (auto res = db::countKeytag("logical_asset", asset.name); res && *res > 0) {
         logWarn("a logical_asset (sensor) refers to it");
         return unexpected("a logical_asset (sensor) refers to it"_tr);
     }
