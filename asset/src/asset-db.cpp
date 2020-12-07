@@ -1094,7 +1094,7 @@ Expected<uint16_t> convertAssetToMonitor(uint32_t assetElementId)
         auto            res = conn.selectRow(sql, "id"_p = assetElementId);
         return res.get<uint16_t>("id_discovered_device");
     } catch (const tntdb::NotFound&) {
-        return unexpected(error(Errors::ElementNotFound).format(assetElementId));
+        return 0;
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), assetElementId));
     }
