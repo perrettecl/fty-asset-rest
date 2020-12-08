@@ -42,7 +42,7 @@ etn_target(shared ${PROJECT_NAME}
         fty-asset
         fty_common_messagebus
         fty_common_dto
-    TARGET_DESTINATION /usr/lib/tntnet
+    TARGET_DESTINATION /usr/lib/bios
 )
 
 ########################################################################################################################

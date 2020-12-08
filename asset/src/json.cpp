@@ -75,7 +75,7 @@ std::string getJsonAsset(uint32_t elemId)
     auto tmp = AssetManager::getItem(elemId);
 
     if (!tmp) {
-        log_error(tmp.error().c_str());
+        log_error(tmp.error().toString().c_str());
         return json;
     }
 

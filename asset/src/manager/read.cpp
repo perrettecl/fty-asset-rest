@@ -51,7 +51,7 @@ static std::vector<std::tuple<uint32_t, std::string, std::string, std::string>> 
     return ret;
 }
 
-Expected<AssetManager::AssetList> AssetManager::getItems(const std::string& typeName, const std::string& subtypeName)
+AssetExpected<AssetManager::AssetList> AssetManager::getItems(const std::string& typeName, const std::string& subtypeName)
 {
     uint16_t subtypeId = 0;
 
@@ -78,7 +78,7 @@ Expected<AssetManager::AssetList> AssetManager::getItems(const std::string& type
     }
 }
 
-Expected<db::WebAssetElementExt> AssetManager::getItem(uint32_t id)
+AssetExpected<db::WebAssetElementExt> AssetManager::getItem(uint32_t id)
 {
     db::WebAssetElementExt el;
     try {

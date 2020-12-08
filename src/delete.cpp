@@ -5,6 +5,7 @@
 #include "asset/logger.h"
 #include <fty/rest/audit-log.h>
 #include <fty/rest/component.h>
+#include <fty/rest/translate.h>
 #include <fty/split.h>
 #include <fty_common_asset_types.h>
 
@@ -68,9 +69,9 @@ unsigned Delete::deleteOneAsset(const std::string& idStr)
 
 struct Ret : public pack::Node
 {
-    pack::String asset  = FIELD("asset");
-    pack::String status = FIELD("status");
-    pack::String reason = FIELD("reason");
+    pack::String                    asset  = FIELD("asset");
+    pack::String                    status = FIELD("status");
+    rest::details::TranslateMessage reason = FIELD("reason");
 
     using pack::Node::Node;
     META(Ret, asset, status, reason);
@@ -120,7 +121,7 @@ unsigned Delete::deleteAssets(const std::string& idsStr)
         if (asset) {
             sendConfigure(*asset, persist::asset_operation::DELETE, agent_name);
         } else {
-            retVal.reason = asset.error();
+            rest::json(asset.error(), retVal.reason);
         }
     }
 

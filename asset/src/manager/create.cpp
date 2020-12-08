@@ -11,7 +11,7 @@ namespace fty::asset {
 #define CREATE_MODE_ONE_ASSET 1
 #define CREATE_MODE_CSV       2
 
-Expected<uint32_t> AssetManager::createAsset(const std::string& json, const std::string& user, bool sendNotify)
+AssetExpected<uint32_t> AssetManager::createAsset(const std::string& json, const std::string& user, bool sendNotify)
 {
     auto msg = "Request CREATE asset {} FAILED: {}"_tr;
     // Read json, transform to csv, use existing functionality
