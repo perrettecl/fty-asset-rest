@@ -47,7 +47,7 @@ unsigned Edit::run()
         si.getMember("type") >>= type;
 
         if (!si_id) {
-            si.addMember("id") <<= id;
+            si.addMember("id") <<= *id;
         } else if (status == "nonactive") {
             if (*id == "rackcontroller-0" || persist::is_container(type)) {
                 logDebug("Element {} cannot be inactivated.", *id);
@@ -55,7 +55,7 @@ unsigned Edit::run()
                 throw rest::errors::ActionForbidden("inactivate", "Inactivation of this asset"_tr);
             }
         } else {
-            si_id->setValue(id);
+            si_id->setValue(*id);
         }
     } catch (const std::exception& e) {
         auditError("Request CREATE OR UPDATE asset id {} FAILED"_tr, *id);
@@ -82,7 +82,7 @@ unsigned Edit::run()
     try {
         cm = CsvMap_from_serialization_info(si);
         cm.setUpdateUser(user.login());
-        std::time_t timestamp = std::time(NULL);
+        std::time_t timestamp = std::time(nullptr);
         std::string mbstr(100, '\0');
         if (std::strftime(&mbstr[0], sizeof(mbstr), "%FT%T%z", std::localtime(&timestamp))) {
             cm.setUpdateTs(mbstr);
@@ -137,7 +137,8 @@ unsigned Edit::run()
             auditInfo("Request CREATE OR UPDATE asset id {} SUCCESS"_tr, *id);
             return HTTP_OK;
         } else {
-            throw rest::errors::Internal("Import failed"_tr);
+            auditError("Request CREATE OR UPDATE asset id {} FAILED: {}"_tr, *id, imported.at(1).error());
+            throw rest::errors::Internal("Import failed: {}"_tr.format(imported.at(1).error()));
         }
     } else {
         throw rest::errors::Internal(res.error());

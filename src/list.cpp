@@ -44,7 +44,7 @@ unsigned List::run()
         subtypes = split(*subtype, ",");
         for (const auto& it : subtypes) {
             if (!persist::subtype_to_subtypeid(it)) {
-                throw rest::errors::RequestParamBad("subtype", subtype, "See RFC-11 for possible values"_tr);
+                throw rest::errors::RequestParamBad("subtype", *subtype, "See RFC-11 for possible values"_tr);
             }
         }
     }

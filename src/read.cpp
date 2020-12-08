@@ -24,6 +24,7 @@
 #include "asset/json.h"
 #include <fty_common_asset_types.h>
 #include <fty/rest/component.h>
+#include <fty/rest/audit-log.h>
 
 namespace fty::asset {
 
@@ -33,6 +34,8 @@ unsigned Read::run()
     if (auto ret = checkPermissions(user.profile(), m_permissions); !ret) {
         throw rest::Error(ret.error());
     }
+
+auditInfo("read asset!");
 
     auto strId = m_request.queryArg<std::string>("id");
     auto type  = m_request.queryArg<std::string>("type");

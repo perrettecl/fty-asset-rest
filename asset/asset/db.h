@@ -364,6 +364,10 @@ inline tnt::Statement::Statement(const tntdb::Statement& st)
 template <typename T>
 inline T tnt::Row::get(const std::string& col) const
 {
+    if (m_row.isNull(col)) {
+        return {};
+    }
+
     try {
         if constexpr (std::is_same_v<T, std::string>) {
             return m_row.getString(col);
@@ -399,7 +403,11 @@ inline T tnt::Row::get(const std::string& col) const
 
 inline std::string tnt::Row::get(const std::string& col) const
 {
-    return m_row.getString(col);
+    if (m_row.isNull(col)) {
+        return {};
+    } else {
+        return m_row.getString(col);
+    }
 }
 
 template <typename T>

@@ -28,6 +28,7 @@ namespace fty::asset {
 
 unsigned Create::run()
 {
+auditInfo("create asset");
     rest::User user(m_request);
     if (auto ret = checkPermissions(user.profile(), m_permissions); !ret) {
         throw rest::Error(ret.error());

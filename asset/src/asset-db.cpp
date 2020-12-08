@@ -236,7 +236,7 @@ Expected<AssetElement> selectAssetElementByName(const std::string& elementName)
         row.get("id_type", el.typeId);
         row.get("id_subtype", el.subtypeId);
 
-        return el;
+        return std::move(el);
     } catch (const tntdb::NotFound&) {
         return unexpected(error(Errors::ElementNotFound).format(elementName));
     } catch (const std::exception& e) {
@@ -251,7 +251,7 @@ Expected<WebAssetElement> selectAssetElementWebById(uint32_t elementId)
     WebAssetElement el;
 
     if (auto ret = selectAssetElementWebById(elementId, el)) {
-        return el;
+        return std::move(el);
     } else {
         return unexpected(ret.error());
     }
@@ -312,7 +312,7 @@ Expected<Attributes> selectExtAttributes(uint32_t elementId)
             attrs.emplace(row.get("keytag"), val);
         }
 
-        return attrs;
+        return std::move(attrs);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
@@ -344,7 +344,7 @@ Expected<std::map<uint32_t, std::string>> selectAssetElementGroups(uint32_t elem
         for (const auto& row : res) {
             item.emplace(row.get<uint32_t>("id_asset_group"), row.get("name"));
         }
-        return item;
+        return std::move(item);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
@@ -780,54 +780,54 @@ Expected<void> selectAssetElementSuperParent(uint32_t id, SelectCallback&& cb)
 {
     static const std::string sql = R"(
         SELECT
-            v.id_asset_element as id,
-            v.id_parent1 as id_parent1,
-            v.id_parent2 as id_parent2,
-            v.id_parent3 as id_parent3,
-            v.id_parent4 as id_parent4,
-            v.id_parent5 as id_parent5,
-            v.id_parent6 as id_parent6,
-            v.id_parent7 as id_parent7,
-            v.id_parent8 as id_parent8,
-            v.id_parent9 as id_parent9,
-            v.id_parent10 as id_parent10,
-            v.name_parent1 as parent_name1,
-            v.name_parent2 as parent_name2,
-            v.name_parent3 as parent_name3,
-            v.name_parent4 as parent_name4,
-            v.name_parent5 as parent_name5,
-            v.name_parent6 as parent_name6,
-            v.name_parent7 as parent_name7,
-            v.name_parent8 as parent_name8,
-            v.name_parent9 as parent_name9,
-            v.name_parent10 as parent_name10,
-            v.id_type_parent1 as id_type_parent1,
-            v.id_type_parent2 as id_type_parent2,
-            v.id_type_parent3 as id_type_parent3,
-            v.id_type_parent4 as id_type_parent4,
-            v.id_type_parent5 as id_type_parent5,
-            v.id_type_parent6 as id_type_parent6,
-            v.id_type_parent7 as id_type_parent7,
-            v.id_type_parent8 as id_type_parent8,
-            v.id_type_parent9 as id_type_parent9,
-            v.id_type_parent10 as id_type_parent10,
-            v.id_subtype_parent1 as id_subtype_parent1,
-            v.id_subtype_parent2 as id_subtype_parent2,
-            v.id_subtype_parent3 as id_subtype_parent3,
-            v.id_subtype_parent4 as id_subtype_parent4,
-            v.id_subtype_parent5 as id_subtype_parent5,
-            v.id_subtype_parent6 as id_subtype_parent6,
-            v.id_subtype_parent7 as id_subtype_parent7,
-            v.id_subtype_parent8 as id_subtype_parent8,
-            v.id_subtype_parent9 as id_subtype_parent9,
-            v.id_subtype_parent10 as id_subtype_parent10,
-            v.name as name,
-            v.type_name as type_name,
-            v.id_asset_device_type as device_type,
-            v.status as status,
-            v.asset_tag as asset_tag,
-            v.priority as priority,
-            v.id_type as id_type
+            v.id_asset_element      as id,
+            v.id_parent1            as id_parent1,
+            v.id_parent2            as id_parent2,
+            v.id_parent3            as id_parent3,
+            v.id_parent4            as id_parent4,
+            v.id_parent5            as id_parent5,
+            v.id_parent6            as id_parent6,
+            v.id_parent7            as id_parent7,
+            v.id_parent8            as id_parent8,
+            v.id_parent9            as id_parent9,
+            v.id_parent10           as id_parent10,
+            v.name_parent1          as parent_name1,
+            v.name_parent2          as parent_name2,
+            v.name_parent3          as parent_name3,
+            v.name_parent4          as parent_name4,
+            v.name_parent5          as parent_name5,
+            v.name_parent6          as parent_name6,
+            v.name_parent7          as parent_name7,
+            v.name_parent8          as parent_name8,
+            v.name_parent9          as parent_name9,
+            v.name_parent10         as parent_name10,
+            v.id_type_parent1       as id_type_parent1,
+            v.id_type_parent2       as id_type_parent2,
+            v.id_type_parent3       as id_type_parent3,
+            v.id_type_parent4       as id_type_parent4,
+            v.id_type_parent5       as id_type_parent5,
+            v.id_type_parent6       as id_type_parent6,
+            v.id_type_parent7       as id_type_parent7,
+            v.id_type_parent8       as id_type_parent8,
+            v.id_type_parent9       as id_type_parent9,
+            v.id_type_parent10      as id_type_parent10,
+            v.id_subtype_parent1    as id_subtype_parent1,
+            v.id_subtype_parent2    as id_subtype_parent2,
+            v.id_subtype_parent3    as id_subtype_parent3,
+            v.id_subtype_parent4    as id_subtype_parent4,
+            v.id_subtype_parent5    as id_subtype_parent5,
+            v.id_subtype_parent6    as id_subtype_parent6,
+            v.id_subtype_parent7    as id_subtype_parent7,
+            v.id_subtype_parent8    as id_subtype_parent8,
+            v.id_subtype_parent9    as id_subtype_parent9,
+            v.id_subtype_parent10   as id_subtype_parent10,
+            v.name                  as name,
+            v.type_name             as type_name,
+            v.id_asset_device_type  as device_type,
+            v.status                as status,
+            v.asset_tag             as asset_tag,
+            v.priority              as priority,
+            v.id_type               as id_type
         FROM
             v_bios_asset_element_super_parent AS v
         WHERE
@@ -941,7 +941,7 @@ static Expected<std::map<std::string, int>> getDictionary(const std::string& stS
             mymap.emplace(row.get("name"), row.get<int>("id"));
         }
 
-        return mymap;
+        return std::move(mymap);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), stStr));
     }
@@ -1007,7 +1007,7 @@ Expected<std::vector<DbAssetLink>> selectAssetDeviceLinksTo(uint32_t elementId, 
 
             ret.push_back(link);
         }
-        return ret;
+        return std::move(ret);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
@@ -1044,7 +1044,7 @@ Expected<std::map<uint32_t, std::string>> selectShortElements(uint16_t typeId, u
             item.emplace(row.get<uint32_t>("id"), row.get("name"));
         }
 
-        return item;
+        return std::move(item);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), typeId));
     }
@@ -1094,7 +1094,7 @@ Expected<uint16_t> convertAssetToMonitor(uint32_t assetElementId)
         auto            res = conn.selectRow(sql, "id"_p = assetElementId);
         return res.get<uint16_t>("id_discovered_device");
     } catch (const tntdb::NotFound&) {
-        return unexpected(error(Errors::ElementNotFound).format(assetElementId));
+        return 0;
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), assetElementId));
     }
@@ -1172,7 +1172,7 @@ Expected<std::vector<uint32_t>> selectAssetsByParent(uint32_t parentId)
         for (const auto& it : conn.select(sql, "parentId"_p = parentId)) {
             ids.emplace_back(it.get<uint32_t>("id"));
         }
-        return ids;
+        return std::move(ids);
     } catch (const tntdb::NotFound&) {
         return unexpected(error(Errors::ElementNotFound).format(parentId));
     } catch (const std::exception& e) {
@@ -1198,7 +1198,7 @@ Expected<std::vector<uint32_t>> selectAssetDeviceLinksSrc(uint32_t elementId)
         for (const auto& it : conn.select(sql, "src"_p = elementId)) {
             ids.emplace_back(it.get<uint32_t>("id_asset_device_dest"));
         }
-        return ids;
+        return std::move(ids);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), elementId));
     }
@@ -1266,7 +1266,7 @@ Expected<std::vector<std::string>> selectExtRwAttributesKeytags()
         for (const auto& row : conn.select(sql)) {
             ret.push_back(row.get("keytag"));
         }
-        return ret;
+        return std::move(ret);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::InternalError).format(e.what()));
     }
@@ -1304,7 +1304,7 @@ Expected<std::vector<WebAssetElement>> selectAssetElementAll(const std::optional
             fetchWebAsset(row, asset);
         }
 
-        return list;
+        return std::move(list);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::InternalError).format(e.what()));
     }
@@ -1330,7 +1330,7 @@ Expected<std::vector<std::string>> selectGroupNames(uint32_t id)
         for(const auto& row: conn.select(sql, "id"_p = id)) {
             result.push_back(row.get("name"));
         }
-        return result;
+        return std::move(result);
     } catch (const std::exception& e) {
         return unexpected(error(Errors::ExceptionForElement).format(e.what(), id));
     }

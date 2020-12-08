@@ -117,7 +117,7 @@ Expected<uint32_t> AssetManager::createAsset(const std::string& json, const std:
             }
             return imported.at(1)->id;
         } else {
-            return unexpected(msg.format(itemName, "Import failed"_tr));
+            return unexpected(msg.format(itemName, imported.at(1).error()));
         }
     } else {
         return unexpected(msg.format(itemName, res.error()));

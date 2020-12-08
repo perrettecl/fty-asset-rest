@@ -80,7 +80,7 @@ std::map<std::string, std::string> Import::sanitizeRowExtNames(size_t row, bool 
                         logError(name.error());
                     } else {
                         logDebug("sanitized {} '{}' -> '{}'", title, it->second, *name);
-                        result[title] = name;
+                        result[title] = *name;
                     }
                 }
             } else {
@@ -782,7 +782,7 @@ AssetExpected<db::AssetElement> Import::processRow(size_t row, const std::set<ui
     el.assetTag  = assetTag;
     el.ext       = extattributes;
 
-    return el;
+    return AssetExpected<db::AssetElement>(el);
 }
 
 AssetExpected<void> Import::updateDcRoomRowRackGroup(tnt::Connection& conn, uint32_t elementId,
@@ -790,7 +790,7 @@ AssetExpected<void> Import::updateDcRoomRowRackGroup(tnt::Connection& conn, uint
     const std::string& status, uint16_t priority, const std::set<uint32_t>& groups, const std::string& assetTag,
     const std::map<std::string, std::string>& extattributesRO) const
 {
-    if (status == "nonactive") {
+    if (elementId == 1 && status == "nonactive") {
         auto msg = "{}: Element cannot be inactivated. Change status to 'active'."_tr.format(elementName);
         logError(msg.toString());
         return unexpected(msg);
@@ -800,7 +800,7 @@ AssetExpected<void> Import::updateDcRoomRowRackGroup(tnt::Connection& conn, uint
     {
         auto ret = db::updateAssetElement(conn, elementId, parentId, status, priority, assetTag);
 
-        if (!ret || *ret != 1) {
+        if (!ret) {
             auto errmsg = "check  element name, location, status, priority, asset_tag"_tr;
             logError("{}, {}", ret.error(), errmsg);
             return unexpected(errmsg);

@@ -79,13 +79,13 @@ std::string getJsonAsset(uint32_t elemId)
         return json;
     }
 
+    std::string parent_name;
+    std::string ext_parent_name;
     auto parent_names = db::idToNameExtName(tmp->parentId);
-    if (!parent_names) {
-        log_error(parent_names.error().c_str());
-        return "";
+    if (parent_names) {
+        parent_name = parent_names->first;
+        ext_parent_name = parent_names->second;
     }
-    std::string parent_name     = parent_names->first;
-    std::string ext_parent_name = parent_names->second;
 
     std::pair<std::string, std::string> asset_names = DBAssets::id_to_name_ext_name(tmp->id);
     if (asset_names.first.empty() && asset_names.second.empty()) {

@@ -25,6 +25,7 @@
 #include <fty_common_mlm_utils.h>
 #include <fty_proto.h>
 #include <malamute.h>
+#include "asset/logger.h"
 
 namespace fty::asset {
 
@@ -136,8 +137,9 @@ Expected<void> sendConfigure(
                 }
             }
         };
-        int res = db::selectAssetElementSuperParent(oneRow.first.id, cb);
+        auto res = db::selectAssetElementSuperParent(oneRow.first.id, cb);
         if (!res) {
+            logError("selectAssetElementSuperParent error: {}", res.error());
             zhash_destroy(&aux);
             mlm_client_destroy(&client);
             return unexpected("persist::select_asset_element_super_parent () failed.");

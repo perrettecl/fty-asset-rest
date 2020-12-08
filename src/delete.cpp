@@ -61,7 +61,8 @@ unsigned Delete::deleteOneAsset(const std::string& idStr)
     } else {
         logError(ret.error());
         auditError("Request DELETE asset id {} FAILED"_tr, idStr);
-        throw rest::errors::Internal("Error during configuration sending of asset change notification. Consult system log."_tr);
+        throw rest::errors::Internal(
+            "Error during configuration sending of asset change notification. Consult system log."_tr);
     }
 }
 
@@ -113,13 +114,12 @@ unsigned Delete::deleteAssets(const std::string& idsStr)
     std::string           agent_name = generateMlmClientId("web.asset_delete");
 
     for (const auto& [name, asset] : result) {
+        auto& retVal  = ret.append();
+        retVal.status = asset ? "OK" : "ERROR";
+        retVal.asset  = name;
         if (asset) {
             sendConfigure(*asset, persist::asset_operation::DELETE, agent_name);
-        }
-        auto& retVal  = ret.append();
-        retVal.asset  = asset->name;
-        retVal.status = asset ? "OK" : "ERROR";
-        if (!asset) {
+        } else {
             retVal.reason = asset.error();
         }
     }
