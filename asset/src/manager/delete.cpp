@@ -53,7 +53,7 @@ static void collectLinks(uint32_t elementId, std::vector<uint32_t>& links, const
 }
 
 // Delete asset recursively
-static Expected<void> deleteAssetRec(ElementPtr& el)
+static AssetExpected<void> deleteAssetRec(ElementPtr& el)
 {
     if (el->isDeleted) {
         return {};
@@ -78,7 +78,7 @@ static Expected<void> deleteAssetRec(ElementPtr& el)
 
 // =====================================================================================================================
 
-Expected<db::AssetElement> AssetManager::deleteAsset(uint32_t id)
+AssetExpected<db::AssetElement> AssetManager::deleteAsset(uint32_t id)
 {
     auto asset = db::selectAssetElementWebById(id);
     if (!asset) {
@@ -87,7 +87,7 @@ Expected<db::AssetElement> AssetManager::deleteAsset(uint32_t id)
     return deleteAsset(*asset);
 }
 
-Expected<db::AssetElement> AssetManager::deleteAsset(const db::AssetElement& asset)
+AssetExpected<db::AssetElement> AssetManager::deleteAsset(const db::AssetElement& asset)
 {
     // disable deleting RC0
     if (asset.name == "rackcontroller-0") {
@@ -117,9 +117,9 @@ Expected<db::AssetElement> AssetManager::deleteAsset(const db::AssetElement& ass
     return unexpected("unknown type"_tr);
 }
 
-std::map<std::string, Expected<db::AssetElement>> AssetManager::deleteAsset(const std::map<uint32_t, std::string>& ids)
+std::map<std::string, AssetExpected<db::AssetElement>> AssetManager::deleteAsset(const std::map<uint32_t, std::string>& ids)
 {
-    std::map<std::string, Expected<db::AssetElement>> result;
+    std::map<std::string, AssetExpected<db::AssetElement>> result;
     std::vector<std::shared_ptr<Element>>             toDel;
 
     for (const auto& [id, name] : ids) {
@@ -145,7 +145,7 @@ std::map<std::string, Expected<db::AssetElement>> AssetManager::deleteAsset(cons
 
     auto find = [&](uint32_t id) {
         auto ret = std::find_if(toDel.begin(), toDel.end(), [&](const auto& ptr) {
-            return ptr->id = id;
+            return ptr->id == id;
         });
         return ret != toDel.end() ? *ret : nullptr;
     };
@@ -182,7 +182,7 @@ std::map<std::string, Expected<db::AssetElement>> AssetManager::deleteAsset(cons
 }
 
 
-Expected<db::AssetElement> AssetManager::deleteDcRoomRowRack(const db::AssetElement& element)
+AssetExpected<db::AssetElement> AssetManager::deleteDcRoomRowRack(const db::AssetElement& element)
 {
     tnt::Connection  conn;
     tnt::Transaction trans(conn);
@@ -237,7 +237,7 @@ Expected<db::AssetElement> AssetManager::deleteDcRoomRowRack(const db::AssetElem
     return element;
 }
 
-Expected<db::AssetElement> AssetManager::deleteGroup(const db::AssetElement& element)
+AssetExpected<db::AssetElement> AssetManager::deleteGroup(const db::AssetElement& element)
 {
     tnt::Connection  conn;
     tnt::Transaction trans(conn);
@@ -258,7 +258,7 @@ Expected<db::AssetElement> AssetManager::deleteGroup(const db::AssetElement& ele
     return element;
 }
 
-Expected<db::AssetElement> AssetManager::deleteDevice(const db::AssetElement& element)
+AssetExpected<db::AssetElement> AssetManager::deleteDevice(const db::AssetElement& element)
 {
     tnt::Connection  conn;
     tnt::Transaction trans(conn);

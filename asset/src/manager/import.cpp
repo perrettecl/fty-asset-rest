@@ -7,7 +7,7 @@
 
 namespace fty::asset {
 
-Expected<AssetManager::ImportList> AssetManager::importCsv(
+AssetExpected<AssetManager::ImportList> AssetManager::importCsv(
     const std::string& csvStr, const std::string& user, bool sendNotify)
 {
     std::stringstream ss(csvStr);

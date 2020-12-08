@@ -4,7 +4,7 @@
 
 namespace fty::asset {
 
-static Expected<void> updateKeytags(const std::vector<std::string>& aek, std::vector<std::string>& s)
+static AssetExpected<void> updateKeytags(const std::vector<std::string>& aek, std::vector<std::string>& s)
 {
     if (auto ret = db::selectExtRwAttributesKeytags()) {
         for (const auto& tag : *ret) {
@@ -53,7 +53,7 @@ protected:
     std::vector<std::string> _buf;
 };
 
-Expected<std::string> AssetManager::exportCsv(const std::optional<db::AssetElement>& dc)
+AssetExpected<std::string> AssetManager::exportCsv(const std::optional<db::AssetElement>& dc)
 {
     std::stringstream ss;
     LineCsvSerializer lcs(ss);
