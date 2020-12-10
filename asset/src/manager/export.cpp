@@ -32,7 +32,12 @@ public:
 
     void add(const std::string& s)
     {
-        _buf.push_back(s);
+        //escap = if it's the first char to avoid excel command -> Do not care when reimporting
+        if (!s.empty() && (s[0] == '=')) {
+            _buf.push_back("'"+s);
+        } else {
+            _buf.push_back(s);
+        }
     }
 
     void add(const uint32_t i)
