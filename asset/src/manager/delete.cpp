@@ -1,3 +1,4 @@
+#include "asset/asset-cam.h"
 #include "asset/asset-db.h"
 #include "asset/asset-manager.h"
 #include "asset/db.h"
@@ -5,7 +6,7 @@
 #include "asset/json.h"
 #include <fty_asset_activator.h>
 #include <fty_common_asset_types.h>
-
+#include <fty_security_wallet.h>
 
 namespace fty::asset {
 
@@ -318,6 +319,19 @@ AssetExpected<db::AssetElement> AssetManager::deleteDevice(const db::AssetElemen
         trans.rollback();
         logError(ret.error());
         return unexpected("error occured during removing element"_tr);
+    }
+
+    try {
+        logDebug("Deleting all mappings for asset {}", element.name);
+        // remove CAM mappings
+        cam::Accessor camAccessor(CAM_CLIENT_ID, CAM_TIMEOUT_MS, MALAMUTE_ENDPOINT);
+        auto mappings = camAccessor.getAssetMappings(element.name);
+        for(const auto& m : mappings) {
+            logDebug("Deleting mapping {} : {}", m.m_serviceId, m.m_protocol);
+            camAccessor.removeMapping(m.m_assetId, m.m_serviceId, m.m_protocol);
+        }
+    } catch (std::exception& e) {
+        logError("Asset mappings could not be removed: {}", e.what());
     }
 
     trans.commit();

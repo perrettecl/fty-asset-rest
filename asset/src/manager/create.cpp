@@ -2,8 +2,10 @@
 #include "asset/csv.h"
 #include <fty_asset_activator.h>
 #include "asset/logger.h"
+#include "asset/asset-cam.h"
 #include "asset/asset-import.h"
 #include "asset/asset-configure-inform.h"
+#include <fty_security_wallet.h>
 
 namespace fty::asset {
 
@@ -114,6 +116,23 @@ AssetExpected<uint32_t> AssetManager::createAsset(const std::string& json, const
             if (!ret) {
                 logError(ret.error());
                 return unexpected(msg.format(itemName, "Database failure"_tr));
+            }
+            try {
+                ExtMap map;
+                getExtMapFromSi(si, map);
+
+                const auto& assetIname = ret.value().first;
+
+                // get list of secw credentials from ext map of asset
+                auto credentialList = getCredentialMappings(map);
+
+                cam::Accessor camAccessor(CAM_CLIENT_ID, CAM_TIMEOUT_MS, MALAMUTE_ENDPOINT);
+                for(const auto& c :credentialList) {
+                    logDebug("Create new mapping to credential with ID {}", c.credentialId);
+                    camAccessor.createMapping(assetIname, c.serviceId, c.protocol, c.port, c.credentialId, cam::Status::UNKNOWN /*, empty map */);
+                }
+            } catch (const std::exception& e) {
+                log_error("Failed to update CAM: %s", e.what());
             }
             return imported.at(1)->id;
         } else {
