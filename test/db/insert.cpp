@@ -208,7 +208,7 @@ TEST_CASE("Monitor")
     el.id = *ret;
 
     auto res =fty::asset::db::insertIntoMonitorAssetRelation(conn, *mon, el.id);
-    if (!ret) {
+    if (!res) {
         FAIL(ret.error());
     }
     REQUIRE(*ret > 0);

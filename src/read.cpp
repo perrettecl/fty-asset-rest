@@ -22,9 +22,9 @@
 #include "read.h"
 #include "asset/asset-helpers.h"
 #include "asset/json.h"
-#include <fty_common_asset_types.h>
-#include <fty/rest/component.h>
 #include <fty/rest/audit-log.h>
+#include <fty/rest/component.h>
+#include <fty_common_asset_types.h>
 
 namespace fty::asset {
 
@@ -35,8 +35,6 @@ unsigned Read::run()
         throw rest::Error(ret.error());
     }
 
-auditInfo("read asset!");
-
     auto strId = m_request.queryArg<std::string>("id");
     auto type  = m_request.queryArg<std::string>("type");
 
@@ -44,22 +42,22 @@ auditInfo("read asset!");
         throw rest::errors::RequestParamRequired("id");
     }
 
-    if (!type) {
-        throw rest::errors::RequestParamRequired("type");
-    }
-
-    if (!persist::type_to_typeid(*type)) {
+    if (type && !persist::type_to_typeid(*type)) {
         throw rest::errors::RequestParamBad("type", *type, "one of datacenter/room/row/rack/group/device"_tr);
     }
 
-    uint32_t id;
+    uint32_t id = 0;
     if (auto res = checkElementIdentifier("dev", *strId)) {
         id = *res;
-    } else if (auto res2 = checkElementIdentifier("dev", *type + *strId)) {
-        id = *res2;
-    } else {
+    } else if (type) {
+        if (auto res2 = checkElementIdentifier("dev", *type + *strId)) {
+            id = *res2;
+        }
+    }
+    if (!id) {
         throw rest::errors::ElementNotFound(*strId);
     }
+
 
     std::string jsonAsset = getJsonAsset(id);
 
