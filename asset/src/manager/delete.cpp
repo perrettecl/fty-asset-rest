@@ -147,7 +147,7 @@ AssetExpected<db::AssetElement> AssetManager::deleteAsset(const db::AssetElement
         }
     }
 
-    return ret;
+    return ret ? AssetExpected<db::AssetElement>(*ret) : unexpected(ret.error());
 }
 
 std::map<std::string, AssetExpected<db::AssetElement>> AssetManager::deleteAsset(const std::map<uint32_t, std::string>& ids)
