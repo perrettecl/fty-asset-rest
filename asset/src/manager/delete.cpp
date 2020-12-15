@@ -115,7 +115,7 @@ AssetExpected<db::AssetElement> AssetManager::deleteAsset(const db::AssetElement
         }
     }
 
-    AssetExpected<db::AssetElement> ret = [&]() {
+    auto ret = [&]() -> AssetExpected<db::AssetElement> {
 
         switch (asset.typeId) {
             case persist::asset_type::DATACENTER:
@@ -136,6 +136,8 @@ AssetExpected<db::AssetElement> AssetManager::deleteAsset(const db::AssetElement
 
     //in case of error we need to try to activate the asset again.
     if (!ret && asset.status == "active") {
+        std::string asset_json = getJsonAsset(asset.id);
+
         try {
             mlm::MlmSyncClient  client(AGENT_FTY_ASSET, AGENT_ASSET_ACTIVATOR);
             fty::AssetActivator activationAccessor(client);
