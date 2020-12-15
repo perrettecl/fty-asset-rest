@@ -132,7 +132,7 @@ AssetExpected<db::AssetElement> AssetManager::deleteAsset(const db::AssetElement
         
         logError("unknown type");
         return unexpected("unknown type"_tr);
-    };
+    }();
 
     //in case of error we need to try to activate the asset again.
     if (!ret && asset.status == "active") {
