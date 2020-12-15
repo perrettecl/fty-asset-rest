@@ -294,20 +294,6 @@ AssetExpected<db::AssetElement> AssetManager::deleteDevice(const db::AssetElemen
     tnt::Connection  conn;
     tnt::Transaction trans(conn);
 
-    // make the device inactive first
-    if (element.status == "active") {
-        std::string asset_json = getJsonAsset(element.id);
-
-        try {
-            mlm::MlmSyncClient  client(AGENT_FTY_ASSET, AGENT_ASSET_ACTIVATOR);
-            fty::AssetActivator activationAccessor(client);
-            activationAccessor.deactivate(asset_json);
-        } catch (const std::exception& e) {
-            logError("Error during asset deactivation - {}", e.what());
-            return unexpected(e.what());
-        }
-    }
-
     if (auto ret = db::deleteAssetElementFromAssetGroups(conn, element.id); !ret) {
         trans.rollback();
         logError(ret.error());
