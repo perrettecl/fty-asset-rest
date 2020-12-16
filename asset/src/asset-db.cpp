@@ -547,6 +547,9 @@ static std::string createAssetName(uint32_t typeId, uint32_t subtypeId)
     return assetName;
 }
 
+
+// =====================================================================================================================
+
 Expected<uint32_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElement& element, bool update)
 {
     if (!persist::is_ok_name(element.name.c_str())) {
