@@ -5,7 +5,7 @@
 #include <fty/split.h>
 #include <fty/translate.h>
 #include <fty_common_asset_types.h>
-
+#include <sys/time.h>
 
 namespace fty::asset::db {
 
@@ -520,6 +520,30 @@ Expected<uint> insertElementIntoGroups(tnt::Connection& conn, const std::set<uin
 
 // =====================================================================================================================
 
+static std::string createAssetName(const std::string& type, const std::string& subtype)
+{
+    std::string assetName;
+
+    timeval t;
+    gettimeofday(&t, NULL);
+    srand(static_cast<unsigned int>(t.tv_sec * t.tv_usec));
+    // generate 8 digit random integer
+    unsigned long index = static_cast<unsigned long>(rand()) % static_cast<unsigned long>(100000000);
+
+    std::string indexStr = std::to_string(index);
+
+    // create 8 digit index with leading zeros
+    indexStr = std::string(8 - indexStr.length(), '0') + indexStr;
+
+    if (type == fty::TYPE_DEVICE) {
+        assetName = subtype + "-" + indexStr;
+    } else {
+        assetName = type + "-" + indexStr;
+    }
+
+    return assetName;
+}
+
 Expected<uint32_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElement& element, bool update)
 {
     if (!persist::is_ok_name(element.name.c_str())) {
@@ -542,20 +566,46 @@ Expected<uint32_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElem
         ON DUPLICATE KEY UPDATE name = :name
     )";
 
-    static const std::string updateSql = R"(
-        UPDATE
-            t_bios_asset_element
-        SET
-            name = concat(:name, '-', :id)
+    static const std::string getTypeName = R"(
+        SELECT
+            name
+        FROM
+            t_bios_asset_element_type
         WHERE
-            id_asset_element = :id
+            id_asset_element_type = :id
     )";
+
+    static const std::string getSubTypeName = R"(
+        SELECT
+            name
+        FROM
+            t_bios_asset_device_type
+        WHERE
+            id_asset_device_type = :id
+    )";
+
+    std::string assetType;
+    std::string assetSubType;
+
+    try {
+        auto res = conn.selectRow(getTypeName, "id"_p = element.typeId);
+        assetType = res.get("name");
+
+        res = conn.selectRow(getSubTypeName, "id"_p = element.subtypeId);
+        assetSubType = res.get("name");
+    } catch (const tntdb::NotFound&) {
+        return unexpected(error(Errors::ElementNotFound));
+    } catch (const std::exception& e) {
+        return unexpected(error(Errors::ExceptionForElement).format(e.what()));
+    }
+
+
 
     try {
         auto st = conn.prepare(sql);
         // clang-format off
         st.bind(
-            "name"_p      = update ? element.name : element.name + "-@@-" + std::to_string(rand()),
+            "name"_p      = update ? element.name : createAssetName(assetType, assetSubType),
             "typeId"_p    = element.typeId,
             "subtypeId"_p = element.subtypeId != 0 ? element.subtypeId : uint32_t(persist::asset_subtype::N_A),
             "status"_p    = element.status,
@@ -567,15 +617,6 @@ Expected<uint32_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElem
         uint affectedRows = st.execute();
 
         uint32_t rowid = uint32_t(conn.lastInsertId());
-
-        if (!update) {
-            // clang-format off
-            conn.execute(updateSql,
-                "name"_p = element.name,
-                "id"_p   = rowid
-            );
-            // clang-format on
-        }
 
         if (affectedRows == 0) {
             return unexpected("Something going wrong");
