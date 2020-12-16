@@ -520,8 +520,11 @@ Expected<uint> insertElementIntoGroups(tnt::Connection& conn, const std::set<uin
 
 // =====================================================================================================================
 
-static std::string createAssetName(const std::string& type, const std::string& subtype)
+static std::string createAssetName(uint32_t typeId, uint32_t subtypeId)
 {
+    std::string type = persist::typeid_to_type(static_cast<uint16_t>(typeId));
+    std::string subtype = persist::subtypeid_to_subtype(static_cast<uint16_t>(subtypeId));
+
     std::string assetName;
 
     timeval t;
@@ -566,46 +569,11 @@ Expected<uint32_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElem
         ON DUPLICATE KEY UPDATE name = :name
     )";
 
-    static const std::string getTypeName = R"(
-        SELECT
-            name
-        FROM
-            t_bios_asset_element_type
-        WHERE
-            id_asset_element_type = :id
-    )";
-
-    static const std::string getSubTypeName = R"(
-        SELECT
-            name
-        FROM
-            t_bios_asset_device_type
-        WHERE
-            id_asset_device_type = :id
-    )";
-
-    std::string assetType;
-    std::string assetSubType;
-
-    try {
-        auto res = conn.selectRow(getTypeName, "id"_p = element.typeId);
-        assetType = res.get("name");
-
-        res = conn.selectRow(getSubTypeName, "id"_p = element.subtypeId);
-        assetSubType = res.get("name");
-    } catch (const tntdb::NotFound&) {
-        return unexpected(error(Errors::ElementNotFound));
-    } catch (const std::exception& e) {
-        return unexpected(error(Errors::ExceptionForElement).format(e.what()));
-    }
-
-
-
     try {
         auto st = conn.prepare(sql);
         // clang-format off
         st.bind(
-            "name"_p      = update ? element.name : createAssetName(assetType, assetSubType),
+            "name"_p      = update ? element.name : createAssetName(element.typeId, element.subtypeId),
             "typeId"_p    = element.typeId,
             "subtypeId"_p = element.subtypeId != 0 ? element.subtypeId : uint32_t(persist::asset_subtype::N_A),
             "status"_p    = element.status,
