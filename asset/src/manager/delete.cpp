@@ -148,6 +148,19 @@ AssetExpected<db::AssetElement> AssetManager::deleteAsset(const db::AssetElement
         }
     }
 
+    try {
+        logDebug("Deleting all mappings for asset {}", asset.name);
+        // remove CAM mappings
+        cam::Accessor camAccessor(CAM_CLIENT_ID, CAM_TIMEOUT_MS, MALAMUTE_ENDPOINT);
+        auto mappings = camAccessor.getAssetMappings(asset.name);
+        for(const auto& m : mappings) {
+            logDebug("Deleting mapping {} : {}", m.m_serviceId, m.m_protocol);
+            camAccessor.removeMapping(m.m_assetId, m.m_serviceId, m.m_protocol);
+        }
+    } catch (std::exception& e) {
+        logError("Asset mappings could not be removed: {}", e.what());
+    }
+
     return ret ? AssetExpected<db::AssetElement>(*ret) : unexpected(ret.error());
 }
 
@@ -319,19 +332,6 @@ AssetExpected<db::AssetElement> AssetManager::deleteDevice(const db::AssetElemen
         trans.rollback();
         logError(ret.error());
         return unexpected("error occured during removing element"_tr);
-    }
-
-    try {
-        logDebug("Deleting all mappings for asset {}", element.name);
-        // remove CAM mappings
-        cam::Accessor camAccessor(CAM_CLIENT_ID, CAM_TIMEOUT_MS, MALAMUTE_ENDPOINT);
-        auto mappings = camAccessor.getAssetMappings(element.name);
-        for(const auto& m : mappings) {
-            logDebug("Deleting mapping {} : {}", m.m_serviceId, m.m_protocol);
-            camAccessor.removeMapping(m.m_assetId, m.m_serviceId, m.m_protocol);
-        }
-    } catch (std::exception& e) {
-        logError("Asset mappings could not be removed: {}", e.what());
     }
 
     trans.commit();
