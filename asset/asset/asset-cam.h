@@ -32,18 +32,18 @@ static constexpr const char *CAM_DEFAULT_PROTOCOL = "monitoring";
 static constexpr const char *CAM_DEFAULT_PORT = "0";
 static constexpr const int   CAM_TIMEOUT_MS = 1000; // ms
 
-struct CredentialMapping {
+typedef struct CredentialMapping {
     std::string serviceId;
     std::string credentialId;
     std::string protocol;
     std::string port;
-};
+} CredentialMapping;
 
-struct ExtMapElement {
+typedef struct ExtMapElement {
     std::string value;
     bool        readOnly   = false;
     bool        wasUpdated = false;
-};
+} ExtMapElement;
 
 using ExtMap = std::map<std::string, ExtMapElement>;
 
@@ -52,3 +52,6 @@ void getExtMapFromSi(const cxxtools::SerializationInfo& si, ExtMap& map);
 using ExtMap = std::map<std::string, ExtMapElement>;
 
 std::list<CredentialMapping> getCredentialMappings(const ExtMap& extMap);
+
+void createMappings(const std::string& assetInternalName, const std::list<CredentialMapping>& credentialList);
+void deleteMappings(const std::string& assetInternalName);

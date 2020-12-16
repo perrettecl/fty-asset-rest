@@ -5,7 +5,6 @@
 #include "asset/asset-cam.h"
 #include "asset/asset-import.h"
 #include "asset/asset-configure-inform.h"
-#include <fty_security_wallet.h>
 
 namespace fty::asset {
 
@@ -123,14 +122,9 @@ AssetExpected<uint32_t> AssetManager::createAsset(const std::string& json, const
 
                 const auto& assetIname = ret.value().first;
 
-                // get list of secw credentials from ext map of asset
+                deleteMappings(assetIname);
                 auto credentialList = getCredentialMappings(map);
-
-                cam::Accessor camAccessor(CAM_CLIENT_ID, CAM_TIMEOUT_MS, MALAMUTE_ENDPOINT);
-                for(const auto& c :credentialList) {
-                    logDebug("Create new mapping to credential with ID {}", c.credentialId);
-                    camAccessor.createMapping(assetIname, c.serviceId, c.protocol, c.port, c.credentialId, cam::Status::UNKNOWN /*, empty map */);
-                }
+                createMappings(assetIname, credentialList);
             } catch (const std::exception& e) {
                 log_error("Failed to update CAM: %s", e.what());
             }
