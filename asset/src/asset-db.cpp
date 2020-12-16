@@ -546,12 +546,12 @@ static std::string createAssetName(tnt::Connection& conn, uint32_t typeId, uint3
         indexStr = std::string(8 - indexStr.length(), '0') + indexStr;
 
         static const std::string sql = R"(
-            SELECT CPUNT(id_asset_element) as cnt
+            SELECT COUNT(id_asset_element) as cnt
             FROM t_bios_asset_element
             WHERE name like :name
         )";
 
-        logDebug("Checking ID {} validty", indexStr);
+        logDebug("Checking ID {} validity", indexStr);
         try {
             auto res = conn.selectRow(sql, "name"_p = std::string("%").append(indexStr));
             valid = (res.get<unsigned>("cnt") == 0);
