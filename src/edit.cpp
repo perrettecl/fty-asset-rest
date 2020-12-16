@@ -3,6 +3,7 @@
 #include "asset/asset-import.h"
 #include "asset/asset-manager.h"
 #include "asset/csv.h"
+#include "asset/asset/asset-cam.h"
 #include "asset/logger.h"
 #include <cxxtools/jsondeserializer.h>
 #include <fty/rest/audit-log.h>
@@ -11,6 +12,7 @@
 #include <fty_common_asset.h>
 #include <fty_common_asset_types.h>
 #include <fty_common_mlm.h>
+#include <fty_security_wallet.h>
 
 namespace fty::asset {
 
@@ -135,6 +137,60 @@ unsigned Edit::run()
             }
             m_reply << "{\"id\": \"" << ret->first << "\"}";
             auditInfo("Request CREATE OR UPDATE asset id {} SUCCESS"_tr, *id);
+
+            try {
+                const auto& assetIname = ret.value().first;
+
+                logDebug("Updating mappings for asset {}", assetIname);
+
+                ExtMap map;
+                getExtMapFromSi(si, map);
+
+                // get list of secw credentials from ext map of asset
+                auto credentialList = getCredentialMappings(map);
+
+                cam::Accessor camAccessor(CAM_CLIENT_ID, CAM_TIMEOUT_MS, MALAMUTE_ENDPOINT);
+
+                // get asset existing mappings
+                auto existingMappings = camAccessor.getAssetMappings(assetIname);
+
+                for(const auto& c :credentialList) {
+                    auto mappingExists = std::find_if(existingMappings.begin(), existingMappings.end(), [&] (const cam::CredentialAssetMapping &mapping) {
+                        // only one mapping can exist with same service ID and same protocol
+                        return mapping.m_serviceId == c.serviceId && mapping.m_protocol == c.protocol;
+                    });
+                    if(mappingExists != existingMappings.end()) {
+                        logDebug("Asset {} already mapped to {} : {}", assetIname, c.serviceId, c.protocol);
+                        // if either credential ID or port changed, update the credential
+                        if(mappingExists->m_credentialId != c.credentialId || mappingExists->m_port != c.port) {
+                            cam::CredentialAssetMapping newMapping;
+                            newMapping.m_assetId = assetIname;
+                            newMapping.m_serviceId = c.serviceId;
+                            newMapping.m_protocol = c.protocol;
+                            newMapping.m_port = c.port;
+                            newMapping.m_credentialId = c.credentialId;
+                            newMapping.m_status = cam::Status::UNKNOWN;
+
+                            logDebug("Mapping {} : {} updated", assetIname, c.serviceId, c.protocol);
+
+                            camAccessor.updateMapping(newMapping);
+                        }
+                        // delete from existing mappings (remaining mappings will be deleted)
+                        existingMappings.erase(mappingExists);
+                    } else {
+                        logDebug("Create new mapping to credential with ID {}", c.credentialId);
+                        camAccessor.createMapping(assetIname, c.serviceId, c.protocol, c.port, c.credentialId, cam::Status::UNKNOWN /*, empty map */);
+                    }
+                }
+
+                // if existingMappings is not empty -> some credentials were removed from asset and need to be deleted
+                for(const auto& m : existingMappings) {
+                    logDebug("Deleting unused mapping {} : {}", m.m_serviceId, m.m_protocol);
+                    camAccessor.removeMapping(assetIname, m.m_serviceId, m.m_protocol);
+                }
+            } catch (const std::exception& e) {
+                log_error("Failed to update CAM: %s", e.what());
+            }
             return HTTP_OK;
         } else {
             auditError("Request CREATE OR UPDATE asset id {} FAILED: {}"_tr, *id, imported.at(1).error());

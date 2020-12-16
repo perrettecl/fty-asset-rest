@@ -7,7 +7,6 @@
 #include <fty_common_asset_types.h>
 #include <sys/time.h>
 
-
 namespace fty::asset::db {
 
 // =====================================================================================================================
@@ -547,6 +546,7 @@ static std::string createAssetName(uint32_t typeId, uint32_t subtypeId)
 
     return assetName;
 }
+
 
 // =====================================================================================================================
 
