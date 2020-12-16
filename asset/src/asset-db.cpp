@@ -7,6 +7,8 @@
 #include <fty_common_asset_types.h>
 #include <sys/time.h>
 
+#define MAX_CREATE_RETRY 10
+
 namespace fty::asset::db {
 
 // =====================================================================================================================
@@ -520,23 +522,47 @@ Expected<uint> insertElementIntoGroups(tnt::Connection& conn, const std::set<uin
 
 // =====================================================================================================================
 
-static std::string createAssetName(uint32_t typeId, uint32_t subtypeId)
+static std::string createAssetName(tnt::Connection& conn, uint32_t typeId, uint32_t subtypeId)
 {
     std::string type = persist::typeid_to_type(static_cast<uint16_t>(typeId));
     std::string subtype = persist::subtypeid_to_subtype(static_cast<uint16_t>(subtypeId));
 
     std::string assetName;
-
     timeval t;
-    gettimeofday(&t, NULL);
-    srand(static_cast<unsigned int>(t.tv_sec * t.tv_usec));
-    // generate 8 digit random integer
-    unsigned long index = static_cast<unsigned long>(rand()) % static_cast<unsigned long>(100000000);
 
-    std::string indexStr = std::to_string(index);
+    bool valid = false;
+    std::string indexStr;
 
-    // create 8 digit index with leading zeros
-    indexStr = std::string(8 - indexStr.length(), '0') + indexStr;
+    unsigned retry = 0;
+
+    while(!valid && (retry++ < MAX_CREATE_RETRY)) {
+        gettimeofday(&t, NULL);
+        srand(static_cast<unsigned int>(t.tv_sec * t.tv_usec));
+        // generate 8 digit random integer
+        unsigned long index = static_cast<unsigned long>(rand()) % static_cast<unsigned long>(100000000);
+
+        indexStr = std::to_string(index);
+        // create 8 digit index with leading zeros
+        indexStr = std::string(8 - indexStr.length(), '0') + indexStr;
+
+        static const std::string sql = R"(
+            SELECT CPUNT(id_asset_element) as cnt
+            FROM t_bios_asset_element
+            WHERE name like :name
+        )";
+
+        logDebug("Checking ID {} validty", indexStr);
+        try {
+            auto res = conn.selectRow(sql, "name"_p = std::string("%").append(indexStr));
+            valid = (res.get<unsigned>("cnt") == 0);
+        } catch (const std::exception& e) {
+            throw std::runtime_error(e.what());
+        }
+    }
+
+    if(!valid) {
+        throw std::runtime_error("Multiple Asset ID collisions - impossible to create asset");
+    }
 
     if (type == fty::TYPE_DEVICE) {
         assetName = subtype + "-" + indexStr;
@@ -576,7 +602,7 @@ Expected<uint32_t> insertIntoAssetElement(tnt::Connection& conn, const AssetElem
         auto st = conn.prepare(sql);
         // clang-format off
         st.bind(
-            "name"_p      = update ? element.name : createAssetName(element.typeId, element.subtypeId),
+            "name"_p      = update ? element.name : createAssetName(conn, element.typeId, element.subtypeId),
             "typeId"_p    = element.typeId,
             "subtypeId"_p = element.subtypeId != 0 ? element.subtypeId : uint32_t(persist::asset_subtype::N_A),
             "status"_p    = element.status,
