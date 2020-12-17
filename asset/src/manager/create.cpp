@@ -2,6 +2,7 @@
 #include "asset/csv.h"
 #include <fty_asset_activator.h>
 #include "asset/logger.h"
+#include "asset/asset-cam.h"
 #include "asset/asset-import.h"
 #include "asset/asset-configure-inform.h"
 
@@ -114,6 +115,18 @@ AssetExpected<uint32_t> AssetManager::createAsset(const std::string& json, const
             if (!ret) {
                 logError(ret.error());
                 return unexpected(msg.format(itemName, "Database failure"_tr));
+            }
+            try {
+                ExtMap map;
+                getExtMapFromSi(si, map);
+
+                const auto& assetIname = ret.value().first;
+
+                deleteMappings(assetIname);
+                auto credentialList = getCredentialMappings(map);
+                createMappings(assetIname, credentialList);
+            } catch (const std::exception& e) {
+                log_error("Failed to update CAM: %s", e.what());
             }
             return imported.at(1)->id;
         } else {

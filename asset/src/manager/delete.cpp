@@ -1,3 +1,4 @@
+#include "asset/asset-cam.h"
 #include "asset/asset-db.h"
 #include "asset/asset-manager.h"
 #include "asset/db.h"
@@ -5,7 +6,6 @@
 #include "asset/json.h"
 #include <fty_asset_activator.h>
 #include <fty_common_asset_types.h>
-
 
 namespace fty::asset {
 
@@ -145,6 +145,13 @@ AssetExpected<db::AssetElement> AssetManager::deleteAsset(const db::AssetElement
         } catch (const std::exception& e) {
             logError("Error during asset activation - {}", e.what());
         }
+    }
+
+    try {
+        logDebug("Deleting all mappings for asset {}", asset.name);
+        deleteMappings(asset.name);
+    } catch (const std::exception& e) {
+        log_error("Failed to update CAM: %s", e.what());
     }
 
     return ret ? AssetExpected<db::AssetElement>(*ret) : unexpected(ret.error());
