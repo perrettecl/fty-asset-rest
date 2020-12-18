@@ -8,6 +8,7 @@
 #include <fty_common_db_exception.h>
 #include <map>
 #include <string>
+#include <mutex>
 
 namespace fty::asset {
 
@@ -31,6 +32,9 @@ private:
     static AssetExpected<db::AssetElement> deleteDcRoomRowRack(const db::AssetElement& element);
     static AssetExpected<db::AssetElement> deleteGroup(const db::AssetElement& element);
     static AssetExpected<db::AssetElement> deleteDevice(const db::AssetElement& element);
+
+    //ensure only 1 request is process at the time
+    static std::mutex m_modification;
 };
 
 } // namespace fty::asset

@@ -31,6 +31,8 @@ AssetExpected<uint32_t> AssetManager::createAsset(const std::string& json, const
 
     logDebug("Create asset {}", itemName);
 
+    const std::lock_guard<std::mutex> lock(m_modification);
+
     CsvMap cm;
     try {
         cm = CsvMap_from_serialization_info(si);
