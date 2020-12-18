@@ -5,12 +5,16 @@
 #include "asset/asset-cam.h"
 #include "asset/asset-import.h"
 #include "asset/asset-configure-inform.h"
+#include <mutex>
 
 namespace fty::asset {
 
 #define AGENT_ASSET_ACTIVATOR "etn-licensing-credits"
 #define CREATE_MODE_ONE_ASSET 1
 #define CREATE_MODE_CSV       2
+
+//ensure only 1 request is process at the time
+static std::mutex g_modification;
 
 AssetExpected<uint32_t> AssetManager::createAsset(const std::string& json, const std::string& user, bool sendNotify)
 {
@@ -30,6 +34,8 @@ AssetExpected<uint32_t> AssetManager::createAsset(const std::string& json, const
     si.getMember("name", itemName);
 
     logDebug("Create asset {}", itemName);
+
+    const std::lock_guard<std::mutex> lock(g_modification);
 
     CsvMap cm;
     try {
