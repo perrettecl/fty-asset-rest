@@ -55,6 +55,7 @@ public:
 
 private:
     tntdb::Connection m_connection;
+    void refreshConnection();
     friend class Transaction;
 };
 
@@ -253,6 +254,11 @@ inline tnt::Connection::Connection()
 {
 }
 
+inline void tnt::Connection::refreshConnection()
+{
+    m_connection = tntdb::connectCached(getenv("DBURL") ? getenv("DBURL") : DBConn::url);
+}
+
 inline tnt::Statement tnt::Connection::prepare(const std::string& sql)
 {
     return Statement(m_connection.prepareCached(sql));
@@ -261,18 +267,21 @@ inline tnt::Statement tnt::Connection::prepare(const std::string& sql)
 template <typename... Args>
 inline tnt::Row tnt::Connection::selectRow(const std::string& queryStr, Args&&... args)
 {
+    refreshConnection();
     return Statement(m_connection.prepareCached(queryStr)).bind(std::forward<Args>(args)...).selectRow();
 }
 
 template <typename... Args>
 inline tnt::Rows tnt::Connection::select(const std::string& queryStr, Args&&... args)
 {
+    refreshConnection();
     return Statement(m_connection.prepareCached(queryStr)).bind(std::forward<Args>(args)...).select();
 }
 
 template <typename... Args>
 inline uint tnt::Connection::execute(const std::string& queryStr, Args&&... args)
 {
+    refreshConnection();
     return Statement(m_connection.prepareCached(queryStr)).bind(std::forward<Args>(args)...).execute();
 }
 
